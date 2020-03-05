@@ -18,7 +18,8 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomTextHeight: Int = dp2px(context, 38f)
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
-    private val lineTopMargin: Int = dp2px(context, 27f) // bgTopPadding 12 + barTextHeight 15
+    private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
+    private val lineBottomMargin: Int = dp2px(context, 15f)
     private val lineBetweenX: Int by lazy { measuredWidth / 13 }
     private val lineCircleOuterSize: Float = dp2px(context, 10f).toFloat()
     private val lineCircleInnerSize: Float = dp2px(context, 5f).toFloat()
@@ -172,7 +173,8 @@ class AnnualLineChartView @JvmOverloads constructor(
             val lastMonth = getLastMonthPair(values) ?: continue
             val ratio = lastMonth.second / maxValue
             val lastMonthX = ((lastMonth.first + 1) * lineBetweenX).toFloat()
-            val lastMonthY = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin)
+            val lastMonthY =
+                lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
             lineCircleOuterPaint.alpha = alpha
             canvas.drawCircle(lastMonthX, lastMonthY, lineCircleOuterSize, lineCircleOuterPaint)
             canvas.drawCircle(lastMonthX, lastMonthY, lineCircleInnerSize, lineCircleInnerPaint)
@@ -221,7 +223,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 
             val ratio = (values[index] ?: 0f).div(maxValue)
             val x = ((index + 1) * lineBetweenX).toFloat()
-            val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin)
+            val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
 
             if (path.isEmpty) {
                 path.moveTo(x, y)

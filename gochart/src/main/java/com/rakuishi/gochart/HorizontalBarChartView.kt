@@ -25,7 +25,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val barRadius: Float = dp2px(context, 2f).toFloat()
     private val barWidth: Int = dp2px(context, 14f)
     private val barSideMargin: Int = dp2px(context, 12f)
-    private val barTopMargin: Int = dp2px(context, 27f) // bgTopPadding 12 + barTextHeight 15
+    private val barTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
     private val barTextYMargin: Int = dp2px(context, 6f)
     private val bottomMonthTextYMargin: Int = dp2px(context, 15f)
     private val bottomYearTextYMargin: Int = dp2px(context, 30f)
