@@ -5,6 +5,8 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import com.rakuishi.gochart.Util.Companion.dp2px
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 
 class AnnualLineChartView @JvmOverloads constructor(
@@ -16,7 +18,8 @@ class AnnualLineChartView @JvmOverloads constructor(
     class ChartData(val year: Int, val month: Int, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
-    private val bottomTextHeight: Int = dp2px(context, 38f)
+    private val bottomMonthTextHeight: Int = dp2px(context, 23f)
+    private val bottomYearTextHeight: Float = dp2px(context, 17f).toFloat()
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
     private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
     private val lineBottomMargin: Int = dp2px(context, 5f)
@@ -158,7 +161,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 
     private fun drawDataSet(canvas: Canvas) {
         val maxValue = calcMaxLineChartDataValue()
-        val years = dataSet.map { chartData -> chartData.year }.distinct()
+        val years = createYearDataSet()
 
         for ((index, year) in years.withIndex()) {
             val values = createYearValues(year)
@@ -173,6 +176,10 @@ class AnnualLineChartView @JvmOverloads constructor(
             drawCircle(canvas, values, maxValue)
             drawLastCircle(canvas, values, maxValue, index + 1 == years.size)
         }
+    }
+
+    private fun createYearDataSet(): List<Int> {
+        return dataSet.map { chartData -> chartData.year }.distinct()
     }
 
     private fun createYearValues(year: Int): Array<Float?> {
@@ -226,9 +233,13 @@ class AnnualLineChartView @JvmOverloads constructor(
 
     private fun drawBottomYear(canvas: Canvas, index: Int, year: Int) {
         // draw BottomYearCircle + BottomYearText
+        val maxSize = getMaxBottomYearSize()
+        val position = index % maxSize
+        val lines = floor(index.toFloat() / maxSize).toInt()
+
         val circleX =
-            (bottomYearXMargin * (index + 1)) + (bottomYearCircleSize * 2 + bottomYearTextWidthWithPadding) * index
-        val circleY = (bgHeight + bottomYearYMargin).toFloat()
+            (bottomYearXMargin * (position + 1)) + (bottomYearCircleSize * 2 + bottomYearTextWidthWithPadding) * position
+        val circleY = bgHeight + bottomYearYMargin + lines * bottomYearTextHeight
 
         canvas.drawCircle(circleX, circleY, bottomYearCircleSize, bottomYearCirclePaint)
         canvas.drawText(
@@ -237,6 +248,12 @@ class AnnualLineChartView @JvmOverloads constructor(
             circleY + bottomYearTextYMargin,
             bottomYearTextPaint
         )
+    }
+
+    private fun getMaxBottomYearSize(): Int {
+        val textWidth =
+            bottomYearXMargin + bottomYearCircleSize * 2 + bottomYearTextWidthWithPadding
+        return floor(measuredWidth / textWidth).toInt()
     }
 
     private fun drawCircle(canvas: Canvas, values: Array<Float?>, maxValue: Float) {
@@ -296,7 +313,9 @@ class AnnualLineChartView @JvmOverloads constructor(
     }
 
     private fun measureHeight(): Int {
-        return bgHeight + bottomTextHeight
+        val yearHeight =
+            (ceil(createYearDataSet().size.toFloat() / getMaxBottomYearSize())) * bottomYearTextHeight
+        return (bgHeight + bottomMonthTextHeight + yearHeight).toInt()
     }
 
     private fun calcMaxLineChartDataValue(): Float {
