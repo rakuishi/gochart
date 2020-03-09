@@ -37,6 +37,10 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val lineCircleInnerPaint: Paint = Paint()
     private val bottomMonthTextPaint: Paint = Paint()
 
+    // to draw Bezier Curve
+    private val cubicPoints = mutableListOf<PointF>()
+    private val cubicIntensity = 0.125f
+
     var bgMinimumWidth: Int = 0
     var valueFormat: String = "%.1f"
     var lineColor: Int = Color.parseColor("#409CF0")
@@ -104,7 +108,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         drawBackground(canvas)
-        drawLine(canvas)
+        drawDataSet(canvas)
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -112,63 +116,64 @@ class CumulativeLineChartView @JvmOverloads constructor(
         canvas.drawRoundRect(RectF(rect), bgRadius, bgRadius, bgPaint)
     }
 
-    private fun drawLine(canvas: Canvas) {
+    private fun drawDataSet(canvas: Canvas) {
         val maxValue = calcMaxLineChartDataValue()
-        val lineBetweenX: Int = measuredWidth / (dataSet.size + 1)
-        canvas.drawPath(createPath(dataSet, maxValue, lineBetweenX), linePaint)
+        val betweenX: Int = measuredWidth / (dataSet.size + 1)
+        drawPath(canvas, maxValue, betweenX)
 
         for ((index, data) in dataSet.withIndex()) {
             val ratio = data.value / maxValue
-            val x = ((index + 1) * lineBetweenX).toFloat()
-            val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
+            val centerX = ((index + 1) * betweenX).toFloat()
+            val centerY =
+                lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
+            val bottomY = (bgHeight + bottomMonthTextYMargin).toFloat()
 
             // draw BottomMonthText
-            canvas.drawText(
-                data.year.toString(),
-                x,
-                (bgHeight + bottomMonthTextYMargin).toFloat(),
-                bottomMonthTextPaint
-            )
+            canvas.drawText(data.year.toString(), centerX, bottomY, bottomMonthTextPaint)
 
             // draw Circle
-            canvas.drawCircle(x, y, lineCircleOuterSize, lineCircleOuterPaint)
-            canvas.drawCircle(x, y, lineCircleInnerSize, lineCircleInnerPaint)
-            canvas.drawText(
-                valueFormat.format(data.value),
-                x,
-                y - lineTextMarginY,
-                lineTextOutlinePaint
-            )
-            canvas.drawText(
-                valueFormat.format(data.value),
-                x,
-                y - lineTextMarginY,
-                lineTextPaint
-            )
+            val valueText = valueFormat.format(data.value)
+            canvas.drawCircle(centerX, centerY, lineCircleOuterSize, lineCircleOuterPaint)
+            canvas.drawCircle(centerX, centerY, lineCircleInnerSize, lineCircleInnerPaint)
+            canvas.drawText(valueText, centerX, centerY - lineTextMarginY, lineTextOutlinePaint)
+            canvas.drawText(valueText, centerX, centerY - lineTextMarginY, lineTextPaint)
         }
     }
 
-    private fun createPath(
-        dataSet: ArrayList<ChartData>,
-        maxValue: Float,
-        lineBetweenX: Int
-    ): Path {
-        val path = Path()
+    private fun drawPath(canvas: Canvas, maxValue: Float, betweenX: Int) {
+        cubicPoints.clear()
 
-        for ((index, data) in dataSet.withIndex()) {
-            val ratio = data.value / maxValue
-            val x = ((index + 1) * lineBetweenX).toFloat()
+        for (index in 0 until dataSet.size) {
+            val ratio = dataSet[index].value / maxValue
+            val x = ((index + 1) * betweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-
-            // draw Path
-            if (path.isEmpty) {
-                path.moveTo(x, y)
-            } else {
-                path.lineTo(x, y)
-            }
+            cubicPoints.add(PointF(x, y))
         }
 
-        return path
+        val path = Path()
+        path.moveTo(cubicPoints.first().x, cubicPoints.first().y)
+
+        for (index in 1 until cubicPoints.size) {
+            val prev = cubicPoints[index - 1]
+            val curr = cubicPoints[index]
+            val next = if (index + 1 < cubicPoints.size) cubicPoints[index + 1] else cubicPoints[index]
+
+            val prevDx = (curr.x - prev.x) * cubicIntensity
+            val prevDy = (curr.y - prev.y) * cubicIntensity
+            val currDx = (next.x - prev.x) * cubicIntensity
+            val currDy = (next.y - prev.y) * cubicIntensity
+
+            path.cubicTo(
+                prev.x + prevDx,
+                prev.y + prevDy,
+                curr.x - currDx,
+                curr.y - currDy,
+                curr.x,
+                curr.y
+            )
+        }
+
+        canvas.drawPath(path, linePaint)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
