@@ -117,6 +117,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     }
 
     private fun drawDataSet(canvas: Canvas) {
+        if (dataSet.size == 0) return
         val maxValue = calcMaxLineChartDataValue()
         val betweenX: Int = measuredWidth / (dataSet.size + 1)
         drawPath(canvas, maxValue, betweenX)
