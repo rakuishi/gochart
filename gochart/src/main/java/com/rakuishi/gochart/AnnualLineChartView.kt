@@ -1,8 +1,10 @@
 package com.rakuishi.gochart
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import com.rakuishi.gochart.Util.Companion.dp2px
 import kotlin.math.ceil
@@ -16,6 +18,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     class ChartData(val year: Int, val month: Int, val value: Float)
+    class Dot(val x: Float, val y: Float, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomMonthTextHeight: Int = dp2px(context, 23f)
@@ -36,7 +39,7 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val bottomYearCircleSize: Float = dp2px(context, 5f).toFloat()
 
     private val rect: Rect = Rect()
-    private val bgColor: Int = Color.parseColor("#F3F3F3")
+    private val bgColor: Int = Color.parseColor("#F5F6F7")
     private val textColor: Int = Color.parseColor("#3B3B3B")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
     private val bgPaint: Paint = Paint()
@@ -51,8 +54,10 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val alphas = arrayListOf(255, 150, 96)
 
     // to draw Bezier Curve
-    private val cubicPoints = mutableListOf<PointF>()
-    private val cubicIntensity = 0.125f
+    private val drawingDots = mutableListOf<Dot>()
+    private val entireDrawingDots = mutableListOf<Dot>()
+    private var selectedDot: Dot? = null
+    private val touchableRange: Int = dp2px(context, 8f)
 
     private val bottomYearTextWidthWithPadding: Int by lazy {
         (bottomYearTextPaint.measureText("2020") + dp2px(context, 10f)).toInt()
@@ -162,6 +167,7 @@ class AnnualLineChartView @JvmOverloads constructor(
     private fun drawDataSet(canvas: Canvas) {
         val maxValue = calcMaxLineChartDataValue()
         val years = createYearDataSet()
+        entireDrawingDots.clear()
 
         for ((index, year) in years.withIndex()) {
             val values = createYearValues(year)
@@ -176,6 +182,8 @@ class AnnualLineChartView @JvmOverloads constructor(
             drawCircle(canvas, values, maxValue)
             drawLastCircle(canvas, values, maxValue, index + 1 == years.size)
         }
+
+        drawSelectedDotIfNeeded(canvas)
     }
 
     private fun createYearDataSet(): List<Int> {
@@ -191,41 +199,42 @@ class AnnualLineChartView @JvmOverloads constructor(
     }
 
     private fun drawPath(canvas: Canvas, values: Array<Float?>, maxValue: Float) {
-        cubicPoints.clear()
+        drawingDots.clear()
 
-        cubicPoints.add(PointF(0f, (bgHeight - lineBottomMargin).toFloat()))
+        drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), 0f))
+        var dot: Dot? = null
         for (index in 0..11) {
             val value = values[index] ?: continue
-            // TODO: Remove same value to draw a smooth line
-            // if (index >= 1 && values[index] == values[index - 1]) continue
             val ratio = value / maxValue
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            cubicPoints.add(PointF(x, y))
+            dot = Dot(x, y, value)
+            // Remove same value to draw a smooth line
+            if (index >= 1 && values[index] == values[index - 1]) continue
+            drawingDots.add(dot)
         }
 
+        // Add the last one certainly. If the last value is same as previous one, a path will be broken.
+        if (dot != null && !drawingDots.contains(dot)) {
+            drawingDots.add(dot)
+        }
+
+        entireDrawingDots.addAll(drawingDots)
+
         val path = Path()
-        path.moveTo(cubicPoints.first().x, cubicPoints.first().y)
+        path.moveTo(drawingDots.first().x, drawingDots.first().y)
 
-        for (index in 1 until cubicPoints.size) {
-            val prev = cubicPoints[index - 1]
-            val curr = cubicPoints[index]
-            val next =
-                if (index + 1 < cubicPoints.size) cubicPoints[index + 1] else cubicPoints[index]
-
-            val prevDx = (curr.x - prev.x) * cubicIntensity
-            val prevDy = (curr.y - prev.y) * cubicIntensity
-            val currDx = (next.x - prev.x) * cubicIntensity
-            val currDy = (next.y - prev.y) * cubicIntensity
-
-            path.cubicTo(
-                prev.x + prevDx,
-                prev.y + prevDy,
-                curr.x - currDx,
-                curr.y - currDy,
-                curr.x,
-                curr.y
-            )
+        val n = drawingDots.size - 1
+        if (n == 1) {
+            path.lineTo(drawingDots[1].x, drawingDots[1].y)
+        } else if (n > 1) {
+            val x = drawingDots.map { dot -> dot.x }.toFloatArray()
+            val y = drawingDots.map { dot -> dot.y }.toFloatArray()
+            val (x1, x2) = MonotoneCubicSpline.computeControlPoints(x)
+            val (y1, y2) = MonotoneCubicSpline.computeControlPoints(y)
+            for (i in 0 until n) {
+                path.cubicTo(x1[i], y1[i], x2[i], y2[i], x[i + 1], y[i + 1])
+            }
         }
 
         canvas.drawPath(path, linePaint)
@@ -295,6 +304,14 @@ class AnnualLineChartView @JvmOverloads constructor(
         canvas.drawText(valueText, lastMonthX, lastMonthY - lineTextMarginY, lineTextPaint)
     }
 
+    private fun drawSelectedDotIfNeeded(canvas: Canvas) {
+        selectedDot?.let {
+            val valueText = valueFormat.format(it.value)
+            canvas.drawText(valueText, it.x, it.y - lineTextMarginY, lineTextOutlinePaint)
+            canvas.drawText(valueText, it.x, it.y - lineTextMarginY, lineTextPaint)
+        }
+    }
+
     private fun getLastMonthPair(values: Array<Float?>): Pair<Int, Float>? {
         for (index in values.size - 1 downTo 0) {
             val value = values[index] ?: continue
@@ -326,5 +343,33 @@ class AnnualLineChartView @JvmOverloads constructor(
             maxValue = max(maxValue, data.value)
         }
         return maxValue
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_UP -> {
+                selectedDot = findSelectedDot(event.x.toInt(), event.y.toInt())
+                postInvalidate()
+            }
+        }
+        return true
+    }
+
+    private fun findSelectedDot(x: Int, y: Int): Dot? {
+        val r = Region()
+        for (point in entireDrawingDots) {
+            r.set(
+                (point.x - touchableRange).toInt(),
+                (point.y - touchableRange).toInt(),
+                (point.x + touchableRange).toInt(),
+                (point.y + touchableRange).toInt()
+            )
+            if (r.contains(x, y)) {
+                return point
+            }
+        }
+
+        return null
     }
 }

@@ -31,7 +31,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val bottomYearTextYMargin: Int = dp2px(context, 30f)
 
     private val rect: Rect = Rect()
-    private val bgColor: Int = Color.parseColor("#F3F3F3")
+    private val bgColor: Int = Color.parseColor("#F5F6F7")
     private val emptyBgColor: Int = Color.parseColor("#D2D2D2")
     private val textColor: Int = Color.parseColor("#3B3B3B")
     private val bgPaint: Paint = Paint()

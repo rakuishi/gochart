@@ -14,6 +14,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     class ChartData(val year: Int, val value: Float)
+    class Dot(val x: Float, val y: Float, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomTextHeight: Int = dp2px(context, 17f)
@@ -26,7 +27,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val bottomMonthTextYMargin: Int = dp2px(context, 17f)
 
     private val rect: Rect = Rect()
-    private val bgColor: Int = Color.parseColor("#F3F3F3")
+    private val bgColor: Int = Color.parseColor("#F5F6F7")
     private val textColor: Int = Color.parseColor("#3B3B3B")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
     private val bgPaint: Paint = Paint()
@@ -38,8 +39,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val bottomMonthTextPaint: Paint = Paint()
 
     // to draw Bezier Curve
-    private val cubicPoints = mutableListOf<PointF>()
-    private val cubicIntensity = 0.125f
+    private val drawingDots = mutableListOf<Dot>()
 
     var bgMinimumWidth: Int = 0
     var valueFormat: String = "%.1f"
@@ -142,36 +142,30 @@ class CumulativeLineChartView @JvmOverloads constructor(
     }
 
     private fun drawPath(canvas: Canvas, maxValue: Float, betweenX: Int) {
-        cubicPoints.clear()
+        drawingDots.clear()
 
         for (index in 0 until dataSet.size) {
-            val ratio = dataSet[index].value / maxValue
+            val value = dataSet[index].value
+            val ratio = value / maxValue
             val x = ((index + 1) * betweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            cubicPoints.add(PointF(x, y))
+            drawingDots.add(Dot(x, y, value))
         }
 
         val path = Path()
-        path.moveTo(cubicPoints.first().x, cubicPoints.first().y)
+        path.moveTo(drawingDots[0].x, drawingDots[0].y)
 
-        for (index in 1 until cubicPoints.size) {
-            val prev = cubicPoints[index - 1]
-            val curr = cubicPoints[index]
-            val next = if (index + 1 < cubicPoints.size) cubicPoints[index + 1] else cubicPoints[index]
-
-            val prevDx = (curr.x - prev.x) * cubicIntensity
-            val prevDy = (curr.y - prev.y) * cubicIntensity
-            val currDx = (next.x - prev.x) * cubicIntensity
-            val currDy = (next.y - prev.y) * cubicIntensity
-
-            path.cubicTo(
-                prev.x + prevDx,
-                prev.y + prevDy,
-                curr.x - currDx,
-                curr.y - currDy,
-                curr.x,
-                curr.y
-            )
+        val n = drawingDots.size - 1
+        if (n == 1) {
+            path.lineTo(drawingDots[1].x, drawingDots[1].y)
+        } else if (n > 1) {
+            val x = drawingDots.map { dot -> dot.x }.toFloatArray()
+            val y = drawingDots.map { dot -> dot.y }.toFloatArray()
+            val (x1, x2) = MonotoneCubicSpline.computeControlPoints(x)
+            val (y1, y2) = MonotoneCubicSpline.computeControlPoints(y)
+            for (i in 0 until n) {
+                path.cubicTo(x1[i], y1[i], x2[i], y2[i], x[i + 1], y[i + 1])
+            }
         }
 
         canvas.drawPath(path, linePaint)
