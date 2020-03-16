@@ -27,7 +27,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val bottomMonthTextYMargin: Int = dp2px(context, 17f)
 
     private val rect: Rect = Rect()
-    private val bgColor: Int = Color.parseColor("#F5F6F7")
+    private val bgColor: Int = Color.parseColor("#ECECEC")
     private val textColor: Int = Color.parseColor("#3B3B3B")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
     private val bgPaint: Paint = Paint()

@@ -33,7 +33,7 @@ class VerticalBarChartView @JvmOverloads constructor(
     }
 
     private val rect: Rect = Rect()
-    private val bgColor: Int = Color.parseColor("#F5F6F7")
+    private val bgColor: Int = Color.parseColor("#ECECEC")
     private val textColor: Int = Color.parseColor("#1F1F1F")
     private val bgPaint: Paint = Paint()
     private val barPaint: Paint = Paint()
