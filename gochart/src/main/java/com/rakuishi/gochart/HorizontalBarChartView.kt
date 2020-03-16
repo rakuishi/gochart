@@ -20,6 +20,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomTextHeight: Int = dp2px(context, 30f)
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
+    private val borderWidth: Float = dp2px(context, 1f).toFloat()
     private val emptyTextSize: Float = dp2px(getContext(), 13f).toFloat()
     private val emptyTextLineHeight: Float = dp2px(getContext(), 23f).toFloat()
     private val barRadius: Float = dp2px(context, 2f).toFloat()
@@ -32,9 +33,11 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
+    private val borderColor: Int = Color.parseColor("#DBDBDB")
     private val emptyBgColor: Int = Color.parseColor("#D2D2D2")
     private val textColor: Int = Color.parseColor("#3B3B3B")
     private val bgPaint: Paint = Paint()
+    private val borderPaint: Paint = Paint()
     private val emptyBgPaint: Paint = Paint()
     private val emptyTextPaint: Paint = Paint()
     private val barPaint: Paint = Paint()
@@ -73,6 +76,12 @@ class HorizontalBarChartView @JvmOverloads constructor(
         bgPaint.run {
             isAntiAlias = true
             color = bgColor
+        }
+
+        borderPaint.run {
+            isAntiAlias = true
+            strokeWidth = borderWidth
+            color = borderColor
         }
 
         emptyBgPaint.run {
@@ -175,13 +184,20 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
             // draw BottomYearText
             if (currentYear == null || currentYear != data.year) {
-                currentYear = data.year
                 canvas.drawText(
                     data.year.toString(),
                     centerX,
                     (bgHeight + bottomYearTextYMargin).toFloat(),
                     bottomYearTextPaint
                 )
+
+                // draw divider
+                if (currentYear != null) {
+                    val dividerX = left - barWidth / 2f
+                    canvas.drawLine(dividerX, 0f, dividerX, bgHeight.toFloat(), borderPaint)
+                }
+
+                currentYear = data.year
             }
 
             if (data.value == null) continue
