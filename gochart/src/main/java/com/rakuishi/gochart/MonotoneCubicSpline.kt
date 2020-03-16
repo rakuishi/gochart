@@ -1,62 +1,72 @@
 package com.rakuishi.gochart
 
+import android.graphics.Path
+import java.lang.Float.MAX_VALUE
+import kotlin.math.abs
+
 class MonotoneCubicSpline {
 
     companion object {
 
-        // https://www.particleincell.com/wp-content/uploads/2012/06/bezier-spline.js
-        @Suppress("ReplaceRangeToWithUntil")
-        fun computeControlPoints(K: FloatArray): Pair<FloatArray, FloatArray> {
-            val n = K.size - 1
-            val p1 = FloatArray(n)
-            val p2 = FloatArray(n)
-
-            // rhs vector
-            val a = FloatArray(n)
-            val b = FloatArray(n)
-            val c = FloatArray(n)
-            val r = FloatArray(n)
-
-            // left most segment
-            a[0] = 0f
-            b[0] = 2f
-            c[0] = 1f
-            r[0] = K[0] + 2 * K[1]
-
-            // internal segments
-            for (i in 1..(n - 2)) {
-                a[i] = 1f
-                b[i] = 4f
-                c[i] = 1f
-                r[i] = 4 * K[i] + 2 * K[i + 1]
+        // https://github.com/chartist-js/chartist/blob/master/src/interpolation/monotone-cubic.js
+        fun computeControlPoints(xs: FloatArray, ys: FloatArray): Path {
+            if (xs.size != ys.size) {
+                throw IllegalStateException("xs.size and ys.size must be same.")
+            }
+            if (xs.isEmpty()) {
+                throw IllegalStateException("xs.size is empty.")
             }
 
-            // right segment
-            a[n - 1] = 2f
-            b[n - 1] = 7f
-            c[n - 1] = 0f
-            r[n - 1] = 8 * K[n - 1] + K[n]
-
-            // solves Ax=b with the Thomas algorithm (from Wikipedia)
-            for (i in 1..(n - 1)) {
-                val m = a[i] / b[i - 1]
-                b[i] = b[i] - m * c[i - 1]
-                r[i] = r[i] - m * r[i - 1]
+            val path = Path()
+            path.moveTo(xs[0], ys[0])
+            if (xs.size == 2) {
+                path.lineTo(xs[1], ys[1])
+                return path
             }
 
-            p1[n - 1] = r[n - 1] / b[n - 1]
-            for (i in (n - 2) downTo 0) {
-                p1[i] = (r[i] - c[i] * p1[i + 1]) / b[i]
-            }
+            val n = xs.size
+            val ms = FloatArray(n)
+            val ds = FloatArray(n)
+            val dys = FloatArray(n)
+            val dxs = FloatArray(n)
 
-            // we have p1, now compute p2
+            // Calculate deltas and derivative
             for (i in 0..(n - 2)) {
-                p2[i] = 2 * K[i + 1] - p1[i + 1]
+                dys[i] = ys[i + 1] - ys[i]
+                dxs[i] = xs[i + 1] - xs[i]
+                ds[i] = dys[i] / dxs[i]
             }
 
-            p2[n - 1] = 0.5f * (K[n] + p1[n - 1])
+            // Determine desired slope (m) at each point using Fritsch-Carlson method
+            // See: http://math.stackexchange.com/questions/45218/implementation-of-monotone-cubic-interpolation
+            ms[0] = ds[0]
+            ms[n - 1] = ds[n - 2]
 
-            return Pair(p1, p2)
+            for (i in 1..(n - 2)) {
+                if (ds[i] == 0f || ds[i - 1] == 0f || (ds[i - 1] > 0) != (ds[i] > 0)) {
+                    ms[i] = 0f
+                } else {
+                    ms[i] = 3 * (dxs[i - 1] + dxs[i]) / (
+                            (2 * dxs[i] + dxs[i - 1]) / ds[i - 1] +
+                                    (dxs[i] + 2 * dxs[i - 1]) / ds[i])
+
+                    val isFinite = abs(ms[i]) <= MAX_VALUE
+                    if (!isFinite) {
+                        ms[i] = 0f
+                    }
+                }
+            }
+
+            // Now build a path from the slopes
+            for (i in 0..(n - 2)) {
+                val x1: Float = xs[i] + dxs[i] / 3
+                val y1: Float = ys[i] + ms[i] * dxs[i] / 3
+                val x2: Float = xs[i + 1] - dxs[i] / 3
+                val y2: Float = ys[i + 1] - ms[i + 1] * dxs[i] / 3
+                path.cubicTo(x1, y1, x2, y2, xs[i + 1], ys[i + 1])
+            }
+
+            return path
         }
     }
 }

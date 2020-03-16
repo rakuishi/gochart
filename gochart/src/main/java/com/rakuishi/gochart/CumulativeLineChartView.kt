@@ -152,23 +152,9 @@ class CumulativeLineChartView @JvmOverloads constructor(
             drawingDots.add(Dot(x, y, value))
         }
 
-        val path = Path()
-        path.moveTo(drawingDots[0].x, drawingDots[0].y)
-
-        val n = drawingDots.size - 1
-        if (n == 1) {
-            path.lineTo(drawingDots[1].x, drawingDots[1].y)
-        } else if (n > 1) {
-            val x = drawingDots.map { dot -> dot.x }.toFloatArray()
-            val y = drawingDots.map { dot -> dot.y }.toFloatArray()
-            val (x1, x2) = MonotoneCubicSpline.computeControlPoints(x)
-            val (y1, y2) = MonotoneCubicSpline.computeControlPoints(y)
-            for (i in 0 until n) {
-                path.cubicTo(x1[i], y1[i], x2[i], y2[i], x[i + 1], y[i + 1])
-            }
-        }
-
-        canvas.drawPath(path, linePaint)
+        val x = drawingDots.map { dot -> dot.x }.toFloatArray()
+        val y = drawingDots.map { dot -> dot.y }.toFloatArray()
+        canvas.drawPath(MonotoneCubicSpline.computeControlPoints(x, y), linePaint)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
