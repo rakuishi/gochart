@@ -20,7 +20,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val bottomTextHeight: Int = dp2px(context, 17f)
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
     private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
-    private val lineBottomMargin: Int = dp2px(context, 15f)
+    private val lineBottomMargin: Int = dp2px(context, 30f)
     private val lineCircleOuterSize: Float = dp2px(context, 10f).toFloat()
     private val lineCircleInnerSize: Float = dp2px(context, 5f).toFloat()
     private val lineTextMarginY: Int = dp2px(context, 15f)
