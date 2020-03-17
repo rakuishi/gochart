@@ -1,8 +1,10 @@
 package com.rakuishi.gochart
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import android.widget.HorizontalScrollView
 import com.rakuishi.gochart.Util.Companion.dp2px
@@ -16,6 +18,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     class ChartData(val year: Int, val month: Int, val value: Float?)
+    class Bar(val rectF: RectF, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomTextHeight: Int = dp2px(context, 30f)
@@ -30,12 +33,21 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val barTextYMargin: Int = dp2px(context, 6f)
     private val bottomMonthTextYMargin: Int = dp2px(context, 15f)
     private val bottomYearTextYMargin: Int = dp2px(context, 30f)
+    private val popupTriangleWidth: Int = dp2px(context, 7f)
+    private val popupTriangleHeight: Int = dp2px(context, 5f)
+    private val popupPadding: Int = dp2px(context, 4f)
+    private val popupUnitMargin: Int = dp2px(context, 2f)
+    private val popupTextSize: Int = dp2px(context, 11f)
+    private val popupUnitTextSize: Int = dp2px(context, 7f)
+    private val popupRadius: Float = dp2px(context, 2f).toFloat()
 
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
     private val borderColor: Int = Color.parseColor("#DBDBDB")
     private val emptyBgColor: Int = Color.parseColor("#D2D2D2")
     private val textColor: Int = Color.parseColor("#3B3B3B")
+    private val popupBgColor: Int = Color.parseColor("#000000")
+    private val popupTextColor: Int = Color.parseColor("#FFFFFF")
     private val bgPaint: Paint = Paint()
     private val borderPaint: Paint = Paint()
     private val emptyBgPaint: Paint = Paint()
@@ -44,6 +56,14 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val barTextPaint: Paint = Paint()
     private val bottomMonthTextPaint: Paint = Paint()
     private val bottomYearTextPaint: Paint = Paint()
+    private val popupBgPaint: Paint = Paint()
+    private val popupTextPaint: Paint = Paint()
+    private val popupUnitTextPaint: Paint = Paint()
+
+    // Save bar's RectF for handling touch events
+    private val drawingBars = mutableListOf<Bar>()
+    private var selectedBar: Bar? = null
+    private val touchableRange: Int = dp2px(context, 6f)
 
     var bgMinimumWidth: Int = 0
     var valueFormat: String = "%.1f"
@@ -71,6 +91,8 @@ class HorizontalBarChartView @JvmOverloads constructor(
         }
     var isEmptyPastData: Boolean = false
     var emptyPastDataText: String = "No chart data available."
+    var horizontalScrollView: HorizontalScrollView? = null
+    var unitText: String = ""
 
     init {
         bgPaint.run {
@@ -124,52 +146,79 @@ class HorizontalBarChartView @JvmOverloads constructor(
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
+
+        popupTextPaint.run {
+            isAntiAlias = true
+            color = popupTextColor
+            textSize = popupTextSize.toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+
+        popupUnitTextPaint.run {
+            isAntiAlias = true
+            color = popupTextColor
+            textSize = popupUnitTextSize.toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+
+        popupBgPaint.run {
+            isAntiAlias = true
+            color = popupBgColor
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
         drawBackground(canvas)
+        drawEmptyBackgroundIfNeeded(canvas)
         drawBar(canvas)
+        drawSelectedBarIfNeeded(canvas)
     }
 
     private fun drawBackground(canvas: Canvas) {
+        rect.set(0, 0, measureWidth(), bgHeight)
+        canvas.drawRoundRect(RectF(rect), bgRadius, bgRadius, bgPaint)
+    }
+
+    private fun drawEmptyBackgroundIfNeeded(canvas: Canvas) {
+        if (!isEmptyPastData) return
+
         val emptyWidth =
             if (isEmptyPastData) ((((12 + 0.5) * barSideMargin) + (12 * barWidth))).toInt()
             else 0
 
-        rect.set(0, 0, measureWidth(), bgHeight)
-        canvas.drawRoundRect(RectF(rect), bgRadius, bgRadius, bgPaint)
+        rect.set(0, 0, emptyWidth, bgHeight)
+        canvas.drawRoundRect(RectF(rect), bgRadius, bgRadius, emptyBgPaint)
 
-        if (isEmptyPastData) {
-            rect.set(0, 0, emptyWidth, bgHeight)
-            canvas.drawRoundRect(RectF(rect), bgRadius, bgRadius, emptyBgPaint)
+        // remove right-top, right-bottom radius
+        rect.set((emptyWidth - bgRadius).toInt(), 0, emptyWidth, bgHeight)
+        canvas.drawRect(rect, emptyBgPaint)
 
-            // remove right-top, right-bottom radius
-            rect.set((emptyWidth - bgRadius).toInt(), 0, emptyWidth, bgHeight)
-            canvas.drawRect(rect, emptyBgPaint)
+        // draw empty text
+        val strings = emptyPastDataText.split("\n")
+        val count = ceil(strings.size / 2f) - 1
+        val baseY = if (strings.size % 2 == 0) {
+            bgHeight / 2 - count * emptyTextLineHeight - emptyTextLineHeight / 2 // odd
+        } else {
+            bgHeight / 2 - count * emptyTextLineHeight + emptyTextLineHeight / 2 // even
+        }
 
-            // draw empty text
-            val strings = emptyPastDataText.split("\n")
-            val count = ceil(strings.size / 2f) - 1
-            val baseY = if (strings.size % 2 == 0) {
-                bgHeight / 2 - count * emptyTextLineHeight - emptyTextLineHeight / 2 // odd
-            } else {
-                bgHeight / 2 - count * emptyTextLineHeight + emptyTextLineHeight / 2 // even
-            }
-
-            for ((index, text) in strings.withIndex()) {
-                canvas.drawText(
-                    text,
-                    (emptyWidth / 2).toFloat(),
-                    (baseY + emptyTextLineHeight * index),
-                    emptyTextPaint
-                )
-            }
+        for ((index, text) in strings.withIndex()) {
+            canvas.drawText(
+                text,
+                (emptyWidth / 2).toFloat(),
+                (baseY + emptyTextLineHeight * index),
+                emptyTextPaint
+            )
         }
     }
 
     private fun drawBar(canvas: Canvas) {
+        drawingBars.clear()
         val maxValue = calcMaxBarChartDataValue()
         var currentYear: Int? = null
+
         for ((index, data) in dataSet.withIndex()) {
             val left = ((index + 1) * barSideMargin) + (index * barWidth)
             val centerX = (left + barWidth / 2).toFloat()
@@ -204,8 +253,12 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
             // draw Bar
             val top = (barTopMargin + (1 - data.value / maxValue) * (bgHeight - barTopMargin))
-            rect.set(left, top.toInt(), left + barWidth, bgHeight)
-            canvas.drawRoundRect(RectF(rect), barRadius, barRadius, barPaint)
+            val right = left + barWidth
+            rect.set(left, top.toInt(), right, bgHeight)
+
+            val rectF = RectF(rect)
+            drawingBars.add(Bar(rectF, data.value))
+            canvas.drawRoundRect(rectF, barRadius, barRadius, barPaint)
 
             // draw BarText
             canvas.drawText(
@@ -214,6 +267,52 @@ class HorizontalBarChartView @JvmOverloads constructor(
                 (top - barTextYMargin),
                 barTextPaint
             )
+        }
+    }
+
+    private fun drawSelectedBarIfNeeded(canvas: Canvas) {
+        selectedBar?.let {
+            val popupTextWidth = measurePopupTextWidth(valueFormat.format(it.value))
+            val popupWidth = if (unitText.isNotEmpty()) {
+                popupTextWidth + popupUnitMargin + measurePopupUnitTextWidth(unitText) + popupPadding * 2
+            } else {
+                popupTextWidth + popupPadding * 2
+            }
+            val popupHeight = popupTextSize + popupPadding * 2
+            val centerX = it.rectF.left + (it.rectF.right - it.rectF.left) / 2
+            val popupLeft = centerX - popupWidth / 2
+            val popupRight = centerX + popupWidth / 2
+            val popupBottom = it.rectF.top - popupTriangleHeight
+            val popupTop = popupBottom - popupHeight
+
+            val rectF = RectF(popupLeft, popupTop, popupRight, popupBottom)
+            canvas.drawRoundRect(rectF, popupRadius, popupRadius, popupBgPaint)
+
+            // draw bottom triangle
+            val path = Path()
+            val triangleHalfWidth = popupTriangleWidth / 2f
+            path.moveTo(centerX - triangleHalfWidth, popupBottom) // top left
+            path.lineTo(centerX + triangleHalfWidth, popupBottom) // top right
+            path.lineTo(centerX, it.rectF.top) // bottom center
+            path.lineTo(centerX - triangleHalfWidth, popupBottom) // top left
+            path.close()
+            canvas.drawPath(path, popupBgPaint)
+
+            canvas.drawText(
+                valueFormat.format(it.value),
+                popupLeft + popupPadding,
+                popupBottom - popupTextSize / 2, // tweaked baseline
+                popupTextPaint
+            )
+
+            if (unitText.isNotEmpty()) {
+                canvas.drawText(
+                    unitText,
+                    popupRight - popupPadding,
+                    popupBottom - popupTextSize / 2, // tweaked baseline
+                    popupUnitTextPaint
+                )
+            }
         }
     }
 
@@ -242,8 +341,67 @@ class HorizontalBarChartView @JvmOverloads constructor(
         return maxValue
     }
 
-    fun invalidate(horizontalScrollView: HorizontalScrollView) {
-        invalidate()
-        horizontalScrollView.post { horizontalScrollView.fullScroll(HorizontalScrollView.FOCUS_RIGHT) }
+    fun scrollToRight() {
+        horizontalScrollView?.post { horizontalScrollView?.fullScroll(HorizontalScrollView.FOCUS_RIGHT) }
+    }
+
+    private var disallowIntercept: Boolean? = null
+    private var downTimeMillis: Long? = null
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                downTimeMillis = System.currentTimeMillis()
+                disallowIntercept = null
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (disallowIntercept == null) {
+                    disallowIntercept =
+                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > 250
+                }
+
+                if (disallowIntercept == true) {
+                    horizontalScrollView?.requestDisallowInterceptTouchEvent(true)
+
+                    // TODO: Don't call `postInvalidate()` frequently
+                    selectedBar = findSelectedBar(event.x.toInt(), event.y.toInt())
+                    postInvalidate()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                downTimeMillis = null
+                disallowIntercept = null
+                horizontalScrollView?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+
+        return true
+    }
+
+    private fun findSelectedBar(x: Int, y: Int): Bar? {
+        val r = Region()
+        for (bar in drawingBars) {
+            r.set(
+                bar.rectF.left.toInt() - touchableRange,
+                0,
+                bar.rectF.right.toInt() + touchableRange,
+                bgHeight
+            )
+            if (r.contains(x, y)) {
+                return bar
+            }
+        }
+
+        return null
+    }
+
+    private fun measurePopupTextWidth(text: String): Float {
+        return popupTextPaint.measureText(text)
+    }
+
+    private fun measurePopupUnitTextWidth(text: String): Float {
+        return popupUnitTextPaint.measureText(text)
     }
 }
