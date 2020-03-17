@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
         cumulativeLineChartView.dataSet = dataSet
         cumulativeLineChartView.bgMinimumWidth = getDeviceSize(this).x - dp2px(this, 32f)
         cumulativeLineChartView.lineColor = Color.parseColor("#45BA64")
+        cumulativeLineChartView.unitText = "m"
         cumulativeLineChartView.invalidate()
     }
 
