@@ -64,6 +64,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val drawingBars = mutableListOf<Bar>()
     private var selectedBar: Bar? = null
     private val touchableRange: Int = dp2px(context, 6f)
+    private val holdMillis = 200L
 
     var bgMinimumWidth: Int = 0
     var valueFormat: String = "%.1f"
@@ -242,7 +243,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
                 // draw divider
                 if (currentYear != null) {
-                    val dividerX = left - barWidth / 2f
+                    val dividerX = left - barWidth / 2f + borderWidth
                     canvas.drawLine(dividerX, 0f, dividerX, bgHeight.toFloat(), borderPaint)
                 }
 
@@ -359,7 +360,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 if (disallowIntercept == null) {
                     disallowIntercept =
-                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > 250
+                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > holdMillis
                 }
 
                 if (disallowIntercept == true) {

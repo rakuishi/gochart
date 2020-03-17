@@ -9,6 +9,7 @@ import android.view.View
 import com.rakuishi.gochart.Util.Companion.dp2px
 import kotlin.math.max
 
+
 class CumulativeLineChartView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -19,6 +20,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     class Dot(val x: Float, val y: Float, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
+    private val bgPaddingX: Int = dp2px(context, 24f)
     private val bottomTextHeight: Int = dp2px(context, 17f)
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
     private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
@@ -180,14 +182,12 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private fun drawDataSet(canvas: Canvas) {
         if (dataSet.size == 0) return
         val maxValue = calcMaxLineChartDataValue()
-        val betweenX: Int = measuredWidth / (dataSet.size + 1)
+        val betweenX: Int =
+            if (dataSet.size == 1) 0 else (measuredWidth - bgPaddingX * 2) / (dataSet.size - 1)
         drawPath(canvas, maxValue, betweenX)
 
         for ((index, data) in dataSet.withIndex()) {
-            val ratio = data.value / maxValue
-            val centerX = ((index + 1) * betweenX).toFloat()
-            val centerY =
-                lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
+            val (centerX, centerY) = calcCenterXY(data, index, maxValue)
             val bottomY = (bgHeight + bottomMonthTextYMargin).toFloat()
 
             // draw BottomMonthText
@@ -206,16 +206,29 @@ class CumulativeLineChartView @JvmOverloads constructor(
         drawingDots.clear()
 
         for (index in 0 until dataSet.size) {
-            val value = dataSet[index].value
-            val ratio = value / maxValue
-            val x = ((index + 1) * betweenX).toFloat()
-            val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            drawingDots.add(Dot(x, y, value))
+            val (centerX, centerY) = calcCenterXY(dataSet[index], index, maxValue)
+            drawingDots.add(Dot(centerX, centerY, dataSet[index].value))
         }
 
+        if (drawingDots.size == 1) return
         val x = drawingDots.map { dot -> dot.x }.toFloatArray()
         val y = drawingDots.map { dot -> dot.y }.toFloatArray()
         canvas.drawPath(MonotoneCubicSpline.computeControlPoints(x, y), linePaint)
+    }
+
+    private fun calcCenterXY(data: ChartData, index: Int, maxValue: Float): Pair<Float, Float> {
+        return if (dataSet.size == 1) {
+            val x = measuredWidth / 2f
+            val y = bgHeight / 2f
+            Pair(x, y)
+        } else {
+            val ratio = data.value / maxValue
+            val betweenX: Int = (measuredWidth - bgPaddingX * 2) / (dataSet.size - 1)
+            val x = bgPaddingX + (index * betweenX).toFloat()
+            val y =
+                lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
+            Pair(x, y)
+        }
     }
 
     private fun drawSelectedDotIfNeeded(canvas: Canvas) {
@@ -288,24 +301,39 @@ class CumulativeLineChartView @JvmOverloads constructor(
         return maxValue
     }
 
+    private var downY: Float? = null
+    private val draggableYRange = dp2px(context, 20f)
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_DOWN)
+            downY = event.y
+
         if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
             // TODO: Don't call `postInvalidate()` frequently
             selectedDot = findSelectedDot(event.x.toInt(), event.y.toInt())
             postInvalidate()
         }
 
+        val disallow = event.action == MotionEvent.ACTION_MOVE
+                && (downY != null && downY!! - draggableYRange < event.y && event.y < downY!! + draggableYRange)
+        parent?.requestDisallowInterceptTouchEvent(disallow)
         return true
     }
 
     private fun findSelectedDot(x: Int, y: Int): Dot? {
         val r = Region()
+        val range = if (dataSet.size < 2) {
+            lineCircleOuterSize.toInt()
+        } else {
+            ((measuredWidth - bgPaddingX * 2) / (dataSet.size - 1)) / 2
+        }
+
         for (dot in drawingDots) {
             r.set(
-                (dot.x - lineCircleOuterSize).toInt(),
+                (dot.x - range).toInt(),
                 0,
-                (dot.x + lineCircleOuterSize).toInt(),
+                (dot.x + range).toInt(),
                 bgHeight
             )
             if (r.contains(x, y)) {

@@ -378,7 +378,8 @@ class AnnualLineChartView @JvmOverloads constructor(
             popupYearWidth + popupTextMaxWidth +
                     popupPadding * 3 + popupYearMargin
         }
-        val popupHeight = (popupTextSize * selectedDots.size + popupPadding * 2).toFloat()
+        val popupTextLineHeight = popupTextSize * 1.1f
+        val popupHeight = (popupTextLineHeight * selectedDots.size + popupPadding * 2)
         val popupLeft = first.x - popupWidth / 2
         val popupRight = first.x + popupWidth / 2
 
@@ -396,7 +397,7 @@ class AnnualLineChartView @JvmOverloads constructor(
         canvas.drawPath(path, popupBgPaint)
 
         for ((index, dot) in selectedDots.withIndex()) {
-            val baseline = (popupTextSize * (index + 1) + popupPadding / 2f)
+            val baseline = (popupTextLineHeight * (index + 1) + popupPadding / 2f)
 
             canvas.drawText(
                 dot.year.toString(),
@@ -456,14 +457,23 @@ class AnnualLineChartView @JvmOverloads constructor(
         return maxValue
     }
 
+    private var downY: Float? = null
+    private val draggableYRange = dp2px(context, 20f)
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_DOWN)
+            downY = event.y
+
         if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
             // TODO: Don't call `postInvalidate()` frequently
             findSelectedDots(event.x.toInt(), event.y.toInt())
             postInvalidate()
         }
 
+        val disallow = event.action == MotionEvent.ACTION_MOVE
+                && (downY != null && downY!! - draggableYRange < event.y && event.y < downY!! + draggableYRange)
+        parent?.requestDisallowInterceptTouchEvent(disallow)
         return true
     }
 
