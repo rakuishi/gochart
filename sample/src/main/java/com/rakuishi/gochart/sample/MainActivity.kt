@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         annualLineChartView.dataSet = dataSet
         annualLineChartView.bgMinimumWidth = getDeviceSize(this).x - dp2px(this, 32f)
         annualLineChartView.lineColor = Color.parseColor("#F0A037")
+        annualLineChartView.unitText = "m"
         annualLineChartView.invalidate()
     }
 

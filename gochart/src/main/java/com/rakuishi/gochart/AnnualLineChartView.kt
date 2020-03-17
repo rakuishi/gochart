@@ -18,7 +18,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     class ChartData(val year: Int, val month: Int, val value: Float)
-    class Dot(val x: Float, val y: Float, val value: Float)
+    class Dot(val x: Float, val y: Float, val year: Int, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomMonthTextHeight: Int = dp2px(context, 23f)
@@ -37,11 +37,26 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val bottomYearYMargin: Int = dp2px(context, 33f) // between with bg
     private val bottomYearTextYMargin: Int = dp2px(context, 4f)
     private val bottomYearCircleSize: Float = dp2px(context, 5f).toFloat()
+    private val popupTriangleWidth: Int = dp2px(context, 7f)
+    private val popupTriangleHeight: Int = dp2px(context, 5f)
+    private val popupPadding: Int = dp2px(context, 4f)
+    private val popupYearMargin: Int = dp2px(context, 6f)
+    private val popupUnitMargin: Int = dp2px(context, 2f)
+    private val popupTextSize: Int = dp2px(context, 11f)
+    private val popupUnitTextSize: Int = dp2px(context, 7f)
+    private val popupYearTextSize: Int = dp2px(context, 6f)
+    private val popupRadius: Float = dp2px(context, 2f).toFloat()
+    private val selectedCircleOuterSize: Float = dp2px(context, 7f).toFloat()
+    private val selectedCircleInnerSize: Float = dp2px(context, 6f).toFloat()
 
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
     private val textColor: Int = Color.parseColor("#3B3B3B")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
+    private val popupBgColor: Int = Color.parseColor("#000000")
+    private val popupTextColor: Int = Color.parseColor("#FFFFFF")
+    private val selectedColor: Int = Color.parseColor("#B20505")
+    private val selectedCircleOuterColor: Int = Color.parseColor("#FFFFFF")
     private val bgPaint: Paint = Paint()
     private val linePaint: Paint = Paint()
     private val lineTextPaint: Paint = Paint()
@@ -51,13 +66,19 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val bottomMonthTextPaint: Paint = Paint()
     private val bottomYearTextPaint: Paint = Paint()
     private val bottomYearCirclePaint: Paint = Paint()
+    private val popupBgPaint: Paint = Paint()
+    private val popupTextPaint: Paint = Paint()
+    private val popupUnitTextPaint: Paint = Paint()
+    private val popupYearTextPaint: Paint = Paint()
+    private val selectedBorderPaint: Paint = Paint()
+    private val selectedCircleOuterPaint: Paint = Paint()
+    private val selectedCircleInnerPaint: Paint = Paint()
     private val alphas = arrayListOf(255, 150, 96)
 
     // to draw Bezier Curve
     private val drawingDots = mutableListOf<Dot>()
     private val entireDrawingDots = mutableListOf<Dot>()
-    private var selectedDot: Dot? = null
-    private val touchableRange: Int = dp2px(context, 8f)
+    private var selectedDots = mutableListOf<Dot>()
 
     private val bottomYearTextWidthWithPadding: Int by lazy {
         (bottomYearTextPaint.measureText("2020") + dp2px(context, 10f)).toInt()
@@ -78,6 +99,7 @@ class AnnualLineChartView @JvmOverloads constructor(
             field = value
             requestLayout()
         }
+    var unitText: String = ""
 
     init {
         bgPaint.run {
@@ -139,6 +161,51 @@ class AnnualLineChartView @JvmOverloads constructor(
             isAntiAlias = true
             color = lineColor
         }
+
+        popupTextPaint.run {
+            isAntiAlias = true
+            color = popupTextColor
+            textSize = popupTextSize.toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+
+        popupUnitTextPaint.run {
+            isAntiAlias = true
+            color = popupTextColor
+            textSize = popupUnitTextSize.toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+
+        popupYearTextPaint.run {
+            isAntiAlias = true
+            color = popupTextColor
+            textSize = popupYearTextSize.toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textAlign = Paint.Align.LEFT
+        }
+
+        popupBgPaint.run {
+            isAntiAlias = true
+            color = popupBgColor
+        }
+
+        selectedBorderPaint.run {
+            isAntiAlias = true
+            strokeWidth = dp2px(context, 1f).toFloat()
+            color = selectedColor
+        }
+
+        selectedCircleOuterPaint.run {
+            isAntiAlias = true
+            color = selectedCircleOuterColor
+        }
+
+        selectedCircleInnerPaint.run {
+            isAntiAlias = true
+            color = selectedColor
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -146,6 +213,7 @@ class AnnualLineChartView @JvmOverloads constructor(
         drawBackground(canvas)
         drawBottomMonthText(canvas)
         drawDataSet(canvas)
+        drawSelectedDotIfNeeded(canvas)
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -177,13 +245,11 @@ class AnnualLineChartView @JvmOverloads constructor(
             lineCircleOuterPaint.alpha = alpha
             bottomYearCirclePaint.alpha = alpha
 
-            drawPath(canvas, values, maxValue)
+            drawPath(canvas, values, year, maxValue)
             drawBottomYear(canvas, index, year)
             drawCircle(canvas, values, maxValue)
             drawLastCircle(canvas, values, maxValue, index + 1 == years.size)
         }
-
-        drawSelectedDotIfNeeded(canvas)
     }
 
     private fun createYearDataSet(): List<Int> {
@@ -198,17 +264,17 @@ class AnnualLineChartView @JvmOverloads constructor(
         return values
     }
 
-    private fun drawPath(canvas: Canvas, values: Array<Float?>, maxValue: Float) {
+    private fun drawPath(canvas: Canvas, values: Array<Float?>, year: Int, maxValue: Float) {
         drawingDots.clear()
 
-        drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), 0f))
+        drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), year, 0f))
         var dot: Dot? = null
         for (index in 0..11) {
             val value = values[index] ?: continue
             val ratio = value / maxValue
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            dot = Dot(x, y, value)
+            dot = Dot(x, y, year, value)
             // Remove same value to draw a smooth line
             if (index >= 1 && values[index] == values[index - 1]) continue
             drawingDots.add(dot)
@@ -291,10 +357,69 @@ class AnnualLineChartView @JvmOverloads constructor(
     }
 
     private fun drawSelectedDotIfNeeded(canvas: Canvas) {
-        selectedDot?.let {
-            val valueText = valueFormat.format(it.value)
-            canvas.drawText(valueText, it.x, it.y - lineTextMarginY, lineTextOutlinePaint)
-            canvas.drawText(valueText, it.x, it.y - lineTextMarginY, lineTextPaint)
+        if (selectedDots.isEmpty()) return
+
+        // draw divider
+        val first = selectedDots.first()
+        canvas.drawLine(first.x, 0f, first.x, bgHeight.toFloat(), selectedBorderPaint)
+
+        for (dot in selectedDots) {
+            canvas.drawCircle(dot.x, dot.y, selectedCircleOuterSize, selectedCircleOuterPaint)
+            canvas.drawCircle(dot.x, dot.y, selectedCircleInnerSize, selectedCircleInnerPaint)
+        }
+
+        val popupTextMaxWidth =
+            selectedDots.map { measurePopupTextWidth(valueFormat.format(it.value)) }.maxBy { it }!!
+        val popupYearWidth = measurePopupYearTextWidth(first.year.toString())
+        val popupWidth = if (unitText.isNotEmpty()) {
+            popupYearWidth + popupTextMaxWidth + measurePopupUnitTextWidth(unitText) +
+                    popupPadding * 3 + popupYearMargin + popupUnitMargin
+        } else {
+            popupYearWidth + popupTextMaxWidth +
+                    popupPadding * 3 + popupYearMargin
+        }
+        val popupHeight = (popupTextSize * selectedDots.size + popupPadding * 2).toFloat()
+        val popupLeft = first.x - popupWidth / 2
+        val popupRight = first.x + popupWidth / 2
+
+        val rectF = RectF(popupLeft, 0f, popupRight, popupHeight)
+        canvas.drawRoundRect(rectF, popupRadius, popupRadius, popupBgPaint)
+
+        // draw bottom triangle
+        val path = Path()
+        val triangleHalfWidth = popupTriangleWidth / 2f
+        path.moveTo(first.x - triangleHalfWidth, popupHeight) // top left
+        path.lineTo(first.x + triangleHalfWidth, popupHeight) // top right
+        path.lineTo(first.x, popupHeight + popupTriangleHeight) // bottom center
+        path.lineTo(first.x - triangleHalfWidth, popupHeight) // top left
+        path.close()
+        canvas.drawPath(path, popupBgPaint)
+
+        for ((index, dot) in selectedDots.withIndex()) {
+            val baseline = (popupTextSize * (index + 1) + popupPadding / 2f)
+
+            canvas.drawText(
+                dot.year.toString(),
+                popupLeft + popupPadding * 2,
+                baseline - popupUnitTextSize / 4, // tweak center
+                popupYearTextPaint
+            )
+
+            canvas.drawText(
+                valueFormat.format(dot.value),
+                popupLeft + popupPadding * 2 + popupYearWidth + popupYearMargin,
+                baseline,
+                popupTextPaint
+            )
+
+            if (unitText.isNotEmpty()) {
+                canvas.drawText(
+                    unitText,
+                    popupRight - popupPadding,
+                    baseline,
+                    popupUnitTextPaint
+                )
+            }
         }
     }
 
@@ -333,29 +458,40 @@ class AnnualLineChartView @JvmOverloads constructor(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_UP -> {
-                selectedDot = findSelectedDot(event.x.toInt(), event.y.toInt())
-                postInvalidate()
-            }
+        if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
+            // TODO: Don't call `postInvalidate()` frequently
+            findSelectedDots(event.x.toInt(), event.y.toInt())
+            postInvalidate()
         }
+
         return true
     }
 
-    private fun findSelectedDot(x: Int, y: Int): Dot? {
+    private fun findSelectedDots(x: Int, y: Int) {
+        selectedDots.clear()
         val r = Region()
-        for (point in entireDrawingDots) {
-            r.set(
-                (point.x - touchableRange).toInt(),
-                (point.y - touchableRange).toInt(),
-                (point.x + touchableRange).toInt(),
-                (point.y + touchableRange).toInt()
-            )
-            if (r.contains(x, y)) {
-                return point
+        val range = lineBetweenX / 2f
+        for (dot in entireDrawingDots) {
+            if (dot.x == 0f) continue
+
+            r.set((dot.x - range).toInt(), 0, (dot.x + range).toInt(), bgHeight)
+
+            // `selectedDots` is guaranteed same x
+            if (r.contains(x, y) && (selectedDots.size == 0 || selectedDots.first().x == dot.x)) {
+                selectedDots.add(dot)
             }
         }
+    }
 
-        return null
+    private fun measurePopupTextWidth(text: String): Float {
+        return popupTextPaint.measureText(text)
+    }
+
+    private fun measurePopupUnitTextWidth(text: String): Float {
+        return popupUnitTextPaint.measureText(text)
+    }
+
+    private fun measurePopupYearTextWidth(text: String): Float {
+        return popupYearTextPaint.measureText(text)
     }
 }
