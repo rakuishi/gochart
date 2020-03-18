@@ -10,21 +10,41 @@ class MonotoneCubicSpline {
 
         // https://github.com/chartist-js/chartist/blob/master/src/interpolation/monotone-cubic.js
         fun computeControlPoints(xs: FloatArray, ys: FloatArray): Path {
-            if (xs.size != ys.size) {
+            if (xs.size != xs.size) {
                 throw IllegalStateException("xs.size and ys.size must be same.")
             }
             if (xs.isEmpty()) {
                 throw IllegalStateException("xs.size is empty.")
             }
 
-            val path = Path()
-            path.moveTo(xs[0], ys[0])
+            val hasDummyXY: Boolean
+            val x: FloatArray
+            val y: FloatArray
             if (xs.size == 2) {
-                path.lineTo(xs[1], ys[1])
+                // cubic needs 3 points to draw. If xs.size is 2, add dummyXY
+                hasDummyXY = true
+                x = FloatArray(3)
+                y = FloatArray(3)
+                x[0] = xs[0]
+                x[1] = xs[1]
+                x[2] = xs[1] * 2
+                y[0] = ys[0]
+                y[1] = ys[1]
+                y[2] = ys[1] * 2
+            } else {
+                hasDummyXY = false
+                x = xs
+                y = ys
+            }
+
+            val path = Path()
+            path.moveTo(x[0], y[0])
+            if (x.size == 2) {
+                path.lineTo(x[1], y[1])
                 return path
             }
 
-            val n = xs.size
+            val n = x.size
             val ms = FloatArray(n)
             val ds = FloatArray(n)
             val dys = FloatArray(n)
@@ -32,8 +52,8 @@ class MonotoneCubicSpline {
 
             // Calculate deltas and derivative
             for (i in 0..(n - 2)) {
-                dys[i] = ys[i + 1] - ys[i]
-                dxs[i] = xs[i + 1] - xs[i]
+                dys[i] = y[i + 1] - y[i]
+                dxs[i] = x[i + 1] - x[i]
                 ds[i] = dys[i] / dxs[i]
             }
 
@@ -59,11 +79,12 @@ class MonotoneCubicSpline {
 
             // Now build a path from the slopes
             for (i in 0..(n - 2)) {
-                val x1: Float = xs[i] + dxs[i] / 3
-                val y1: Float = ys[i] + ms[i] * dxs[i] / 3
-                val x2: Float = xs[i + 1] - dxs[i] / 3
-                val y2: Float = ys[i + 1] - ms[i + 1] * dxs[i] / 3
-                path.cubicTo(x1, y1, x2, y2, xs[i + 1], ys[i + 1])
+                val x1: Float = x[i] + dxs[i] / 3
+                val y1: Float = y[i] + ms[i] * dxs[i] / 3
+                val x2: Float = x[i + 1] - dxs[i] / 3
+                val y2: Float = y[i + 1] - ms[i + 1] * dxs[i] / 3
+                path.cubicTo(x1, y1, x2, y2, x[i + 1], y[i + 1])
+                if (hasDummyXY) break
             }
 
             return path

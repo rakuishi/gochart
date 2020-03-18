@@ -24,7 +24,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val bottomTextHeight: Int = dp2px(context, 17f)
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
     private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
-    private val lineBottomMargin: Int = dp2px(context, 30f)
+    private val lineBottomMargin: Int = dp2px(context, 2f)
     private val lineCircleOuterSize: Float = dp2px(context, 10f).toFloat()
     private val lineCircleInnerSize: Float = dp2px(context, 5f).toFloat()
     private val lineTextMarginY: Int = dp2px(context, 15f)
@@ -182,12 +182,10 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private fun drawDataSet(canvas: Canvas) {
         if (dataSet.size == 0) return
         val maxValue = calcMaxLineChartDataValue()
-        val betweenX: Int =
-            if (dataSet.size == 1) 0 else (measuredWidth - bgPaddingX * 2) / (dataSet.size - 1)
-        drawPath(canvas, maxValue, betweenX)
+        drawPath(canvas, maxValue)
 
         for ((index, data) in dataSet.withIndex()) {
-            val (centerX, centerY) = calcCenterXY(data, index, maxValue)
+            val (centerX, centerY) = calcDotXY(data, index, maxValue)
             val bottomY = (bgHeight + bottomMonthTextYMargin).toFloat()
 
             // draw BottomMonthText
@@ -202,33 +200,27 @@ class CumulativeLineChartView @JvmOverloads constructor(
         }
     }
 
-    private fun drawPath(canvas: Canvas, maxValue: Float, betweenX: Int) {
+    private fun drawPath(canvas: Canvas, maxValue: Float) {
         drawingDots.clear()
 
+        drawingDots.add(Dot(bgPaddingX.toFloat(), (bgHeight - lineBottomMargin).toFloat(), 0f))
         for (index in 0 until dataSet.size) {
-            val (centerX, centerY) = calcCenterXY(dataSet[index], index, maxValue)
+            val (centerX, centerY) = calcDotXY(dataSet[index], index, maxValue)
             drawingDots.add(Dot(centerX, centerY, dataSet[index].value))
         }
 
-        if (drawingDots.size == 1) return
         val x = drawingDots.map { dot -> dot.x }.toFloatArray()
         val y = drawingDots.map { dot -> dot.y }.toFloatArray()
         canvas.drawPath(MonotoneCubicSpline.computeControlPoints(x, y), linePaint)
     }
 
-    private fun calcCenterXY(data: ChartData, index: Int, maxValue: Float): Pair<Float, Float> {
-        return if (dataSet.size == 1) {
-            val x = measuredWidth / 2f
-            val y = bgHeight / 2f
-            Pair(x, y)
-        } else {
-            val ratio = data.value / maxValue
-            val betweenX: Int = (measuredWidth - bgPaddingX * 2) / (dataSet.size - 1)
-            val x = bgPaddingX + (index * betweenX).toFloat()
-            val y =
-                lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            Pair(x, y)
-        }
+    private fun calcDotXY(data: ChartData, index: Int, maxValue: Float): Pair<Float, Float> {
+        val ratio = data.value / maxValue
+        val betweenX: Int = (measuredWidth - bgPaddingX * 2) / dataSet.size
+        val x = bgPaddingX + ((index + 1) * betweenX).toFloat()
+        val y =
+            lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
+        return Pair(x, y)
     }
 
     private fun drawSelectedDotIfNeeded(canvas: Canvas) {
@@ -302,7 +294,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     }
 
     private var downY: Float? = null
-    private val draggableYRange = dp2px(context, 20f)
+    private val draggableYRange = dp2px(context, 24f)
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -323,19 +315,13 @@ class CumulativeLineChartView @JvmOverloads constructor(
 
     private fun findSelectedDot(x: Int, y: Int): Dot? {
         val r = Region()
-        val range = if (dataSet.size < 2) {
-            lineCircleOuterSize.toInt()
-        } else {
-            ((measuredWidth - bgPaddingX * 2) / (dataSet.size - 1)) / 2
-        }
+        val range = (measuredWidth - bgPaddingX * 2) / (dataSet.size * 2)
 
         for (dot in drawingDots) {
-            r.set(
-                (dot.x - range).toInt(),
-                0,
-                (dot.x + range).toInt(),
-                bgHeight
-            )
+            if (dot.x == bgPaddingX.toFloat()) continue
+
+            r.set((dot.x - range).toInt(), 0, (dot.x + range).toInt(), bgHeight)
+
             if (r.contains(x, y)) {
                 return dot
             }

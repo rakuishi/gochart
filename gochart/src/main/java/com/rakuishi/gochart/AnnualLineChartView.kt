@@ -458,7 +458,7 @@ class AnnualLineChartView @JvmOverloads constructor(
     }
 
     private var downY: Float? = null
-    private val draggableYRange = dp2px(context, 20f)
+    private val draggableYRange = dp2px(context, 24f)
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {

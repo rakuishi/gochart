@@ -351,7 +351,6 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 downTimeMillis = System.currentTimeMillis()
