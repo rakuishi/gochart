@@ -18,11 +18,12 @@ class AnnualLineChartView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     class ChartData(val year: Int, val month: Int, val value: Float)
+    class Year(val value: Int, val color: Int, var isActive: Boolean, var region: Region = Region())
     class Dot(val x: Float, val y: Float, val year: Int, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
     private val bottomMonthTextHeight: Int = dp2px(context, 23f)
-    private val bottomYearTextHeight: Float = dp2px(context, 17f).toFloat()
+    private val bottomYearTextHeight: Float = dp2px(context, 24f).toFloat()
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
     private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
     private val lineBottomMargin: Int = dp2px(context, 5f)
@@ -52,6 +53,8 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
     private val textColor: Int = Color.parseColor("#3B3B3B")
+    private val inactiveCircleColor = Color.parseColor("#BCBCBC")
+    private val inactiveTextColor: Int = Color.parseColor("#D2D2D2")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
     private val popupBgColor: Int = Color.parseColor("#000000")
     private val popupTextColor: Int = Color.parseColor("#FFFFFF")
@@ -73,7 +76,7 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val selectedBorderPaint: Paint = Paint()
     private val selectedCircleOuterPaint: Paint = Paint()
     private val selectedCircleInnerPaint: Paint = Paint()
-    private val alphas = arrayListOf(255, 150, 96)
+    private val years = mutableListOf<Year>()
 
     // to draw Bezier Curve
     private val drawingDots = mutableListOf<Dot>()
@@ -96,6 +99,32 @@ class AnnualLineChartView @JvmOverloads constructor(
         }
     var dataSet: ArrayList<ChartData> = arrayListOf()
         set(value) {
+            var defaultActiveCount = 5
+            val defaultColors = arrayListOf(
+                Color.parseColor("#569CE9"), // blue
+                Color.parseColor("#72DA82"), // green
+                Color.parseColor("#8256ED"), // purple
+                Color.parseColor("#D553B6"), // pink
+                Color.parseColor("#EB9F5D"),  // orange
+                Color.parseColor("#569CE9"), // blue
+                Color.parseColor("#72DA82"), // green
+                Color.parseColor("#8256ED"), // purple
+                Color.parseColor("#D553B6"), // pink
+                Color.parseColor("#EB9F5D")  // orange
+            )
+
+            // order by descending, 2020 -> 2010
+            years.addAll(value.map { chartData -> chartData.year }
+                .distinct()
+                .sortedDescending()
+                .map { year ->
+                    val color =
+                        if (defaultColors.size == 0) inactiveCircleColor
+                        else defaultColors.removeAt(0)
+                    Year(year, color, (--defaultActiveCount >= 0))
+
+                }
+                .toMutableList())
             field = value
             requestLayout()
         }
@@ -167,7 +196,7 @@ class AnnualLineChartView @JvmOverloads constructor(
             color = popupTextColor
             textSize = popupTextSize.toFloat()
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.LEFT
+            textAlign = Paint.Align.RIGHT
         }
 
         popupUnitTextPaint.run {
@@ -234,26 +263,22 @@ class AnnualLineChartView @JvmOverloads constructor(
 
     private fun drawDataSet(canvas: Canvas) {
         val maxValue = calcMaxLineChartDataValue()
-        val years = createYearDataSet()
         entireDrawingDots.clear()
 
+        // draw descending
         for ((index, year) in years.withIndex()) {
-            val values = createYearValues(year)
-            val alphaIndex = (years.size - 1) - index
-            val alpha = if (alphaIndex >= alphas.size) 48 else alphas[alphaIndex]
-            linePaint.alpha = alpha
-            lineCircleOuterPaint.alpha = alpha
-            bottomYearCirclePaint.alpha = alpha
-
-            drawPath(canvas, values, year, maxValue)
             drawBottomYear(canvas, index, year)
-            drawCircle(canvas, values, maxValue)
-            drawLastCircle(canvas, values, maxValue, index + 1 == years.size)
         }
-    }
 
-    private fun createYearDataSet(): List<Int> {
-        return dataSet.map { chartData -> chartData.year }.distinct()
+        // draw ascending
+        for ((index, year) in years.reversed().withIndex()) {
+            if (!year.isActive) continue
+
+            val values = createYearValues(year.value)
+            drawPath(canvas, values, year, maxValue)
+            drawCircle(canvas, values, year, maxValue)
+            drawLastCircle(canvas, values, year, maxValue, index + 1 == years.size)
+        }
     }
 
     private fun createYearValues(year: Int): Array<Float?> {
@@ -264,17 +289,17 @@ class AnnualLineChartView @JvmOverloads constructor(
         return values
     }
 
-    private fun drawPath(canvas: Canvas, values: Array<Float?>, year: Int, maxValue: Float) {
+    private fun drawPath(canvas: Canvas, values: Array<Float?>, year: Year, maxValue: Float) {
         drawingDots.clear()
 
-        drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), year, 0f))
+        drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), year.value, 0f))
         var dot: Dot? = null
         for (index in 0..11) {
             val value = values[index] ?: continue
             val ratio = value / maxValue
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            dot = Dot(x, y, year, value)
+            dot = Dot(x, y, year.value, value)
             // Remove same value to draw a smooth line
             if (index >= 1 && values[index] == values[index - 1]) continue
             drawingDots.add(dot)
@@ -289,10 +314,11 @@ class AnnualLineChartView @JvmOverloads constructor(
 
         val x = drawingDots.map { it.x }.toFloatArray()
         val y = drawingDots.map { it.y }.toFloatArray()
+        linePaint.color = year.color
         canvas.drawPath(MonotoneCubicSpline.computeControlPoints(x, y), linePaint)
     }
 
-    private fun drawBottomYear(canvas: Canvas, index: Int, year: Int) {
+    private fun drawBottomYear(canvas: Canvas, index: Int, year: Year) {
         // draw BottomYearCircle + BottomYearText
         val maxSize = getMaxBottomYearSize()
         val position = index % maxSize
@@ -302,12 +328,22 @@ class AnnualLineChartView @JvmOverloads constructor(
             (bottomYearXMargin * (position + 1)) + (bottomYearCircleSize * 2 + bottomYearTextWidthWithPadding) * position
         val circleY = bgHeight + bottomYearYMargin + lines * bottomYearTextHeight
 
+        bottomYearCirclePaint.color = if (year.isActive) year.color else inactiveCircleColor
         canvas.drawCircle(circleX, circleY, bottomYearCircleSize, bottomYearCirclePaint)
+
+        bottomYearTextPaint.color = if (year.isActive) textColor else inactiveTextColor
         canvas.drawText(
-            year.toString(),
+            year.value.toString(),
             circleX + bottomYearCircleSize * 2,
             circleY + bottomYearTextYMargin,
             bottomYearTextPaint
+        )
+
+        year.region = Region(
+            (circleX - bottomYearCircleSize * 1.25).toInt(),
+            (circleY - bottomYearCircleSize * 1.25).toInt(),
+            (circleX + bottomYearTextWidthWithPadding).toInt(),
+            (circleY + bottomYearCircleSize * 1.25).toInt()
         )
     }
 
@@ -317,7 +353,7 @@ class AnnualLineChartView @JvmOverloads constructor(
         return floor(measureWidth(measuredWidth) / textWidth).toInt()
     }
 
-    private fun drawCircle(canvas: Canvas, values: Array<Float?>, maxValue: Float) {
+    private fun drawCircle(canvas: Canvas, values: Array<Float?>, year: Year, maxValue: Float) {
         for ((index, value) in values.withIndex()) {
             if (value == null) continue
 
@@ -330,6 +366,7 @@ class AnnualLineChartView @JvmOverloads constructor(
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
             canvas.drawCircle(x, y, lineCircleOuterSize, bgPaint)
+            lineCircleOuterPaint.color = year.color
             canvas.drawCircle(x, y, lineCircleOuterSize, lineCircleOuterPaint)
             canvas.drawCircle(x, y, lineCircleInnerSize, lineCircleInnerPaint)
         }
@@ -338,6 +375,7 @@ class AnnualLineChartView @JvmOverloads constructor(
     private fun drawLastCircle(
         canvas: Canvas,
         values: Array<Float?>,
+        year: Year,
         maxValue: Float,
         isLastYear: Boolean
     ) {
@@ -347,11 +385,13 @@ class AnnualLineChartView @JvmOverloads constructor(
         val lastMonthY =
             lineTopMargin + (1 - lastMontRatio) * (bgHeight - lineTopMargin - lineBottomMargin)
         canvas.drawCircle(lastMonthX, lastMonthY, lineLastCircleOuterSize, bgPaint)
+        lineCircleOuterPaint.color = year.color
         canvas.drawCircle(lastMonthX, lastMonthY, lineLastCircleOuterSize, lineCircleOuterPaint)
         canvas.drawCircle(lastMonthX, lastMonthY, lineLastCircleInnerSize, lineCircleInnerPaint)
 
         if (!isLastYear) return
         val valueText = valueFormat.format(lastMonth.second)
+        lineTextPaint.color = year.color
         canvas.drawText(valueText, lastMonthX, lastMonthY - lineTextMarginY, lineTextOutlinePaint)
         canvas.drawText(valueText, lastMonthX, lastMonthY - lineTextMarginY, lineTextPaint)
     }
@@ -371,12 +411,12 @@ class AnnualLineChartView @JvmOverloads constructor(
         val popupTextMaxWidth =
             selectedDots.map { measurePopupTextWidth(valueFormat.format(it.value)) }.maxBy { it }!!
         val popupYearWidth = measurePopupYearTextWidth(first.year.toString())
+        val popupUnitWidth = measurePopupUnitTextWidth(unitText)
         val popupWidth = if (unitText.isNotEmpty()) {
-            popupYearWidth + popupTextMaxWidth + measurePopupUnitTextWidth(unitText) +
-                    popupPadding * 3 + popupYearMargin + popupUnitMargin
+            popupPadding * 2 + popupYearWidth + popupYearMargin + popupTextMaxWidth +
+                    popupUnitMargin + popupUnitWidth + popupPadding
         } else {
-            popupYearWidth + popupTextMaxWidth +
-                    popupPadding * 3 + popupYearMargin
+            popupPadding * 2 + popupYearWidth + popupYearMargin + popupTextMaxWidth + popupPadding
         }
         val popupTextLineHeight = popupTextSize * 1.1f
         val popupHeight = (popupTextLineHeight * selectedDots.size + popupPadding * 2)
@@ -408,7 +448,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 
             canvas.drawText(
                 valueFormat.format(dot.value),
-                popupLeft + popupPadding * 2 + popupYearWidth + popupYearMargin,
+                popupRight - popupPadding - popupUnitMargin - popupUnitWidth,
                 baseline,
                 popupTextPaint
             )
@@ -443,7 +483,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 
     private fun measureHeight(): Int {
         val yearHeight =
-            (ceil(createYearDataSet().size.toFloat() / getMaxBottomYearSize())) * bottomYearTextHeight
+            (ceil(years.size.toFloat() / getMaxBottomYearSize())) * bottomYearTextHeight
         return (bgHeight + bottomMonthTextHeight + yearHeight).toInt()
     }
 
@@ -481,7 +521,8 @@ class AnnualLineChartView @JvmOverloads constructor(
         selectedDots.clear()
         val r = Region()
         val range = lineBetweenX / 2f
-        for (dot in entireDrawingDots) {
+        // reverse `entireDrawingDots` to show 2020 -> 2010 in popup
+        for (dot in entireDrawingDots.reversed()) {
             if (dot.x == 0f) continue
 
             r.set((dot.x - range).toInt(), 0, (dot.x + range).toInt(), bgHeight)
@@ -489,6 +530,12 @@ class AnnualLineChartView @JvmOverloads constructor(
             // `selectedDots` is guaranteed same x
             if (r.contains(x, y) && (selectedDots.size == 0 || selectedDots.first().x == dot.x)) {
                 selectedDots.add(dot)
+            }
+        }
+
+        for (year in years) {
+            if (year.region.contains(x, y)) {
+                year.isActive = !year.isActive
             }
         }
     }
