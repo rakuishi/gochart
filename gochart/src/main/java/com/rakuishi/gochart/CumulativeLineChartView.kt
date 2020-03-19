@@ -237,8 +237,15 @@ class CumulativeLineChartView @JvmOverloads constructor(
                 popupTextWidth + popupPadding * 2
             }
             val popupHeight = (popupTextSize + popupPadding * 2).toFloat()
-            val popupLeft = it.x - popupWidth / 2
-            val popupRight = it.x + popupWidth / 2
+            var popupRight = it.x + popupWidth / 2
+            if (popupRight > measuredWidth) {
+                popupRight = measuredWidth.toFloat()
+            }
+            var popupLeft = popupRight - popupWidth
+            if (popupLeft < 0) {
+                popupLeft = 0f
+                popupRight = popupWidth
+            }
 
             val rectF = RectF(popupLeft, 0f, popupRight, popupHeight)
             canvas.drawRoundRect(rectF, popupRadius, popupRadius, popupBgPaint)
@@ -293,27 +300,46 @@ class CumulativeLineChartView @JvmOverloads constructor(
         return maxValue
     }
 
-    private var downY: Float? = null
-    private val draggableYRange = dp2px(context, 24f)
+    private var disallowIntercept: Boolean? = null
+    private var downTimeMillis: Long? = null
+    private val holdMillis = 200L
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN)
-            downY = event.y
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                downTimeMillis = System.currentTimeMillis()
+                disallowIntercept = null
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (disallowIntercept == null) {
+                    disallowIntercept =
+                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > holdMillis
+                }
 
-        if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
-            // TODO: Don't call `postInvalidate()` frequently
-            selectedDot = findSelectedDot(event.x.toInt(), event.y.toInt())
-            postInvalidate()
+                if (disallowIntercept == true) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+
+                    // TODO: Don't call `postInvalidate()` frequently
+                    findSelectedDot(event.x.toInt(), event.y.toInt())
+                    postInvalidate()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                downTimeMillis = null
+                disallowIntercept = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+
+                selectedDot = null
+                postInvalidate()
+            }
         }
 
-        val disallow = event.action == MotionEvent.ACTION_MOVE
-                && (downY != null && downY!! - draggableYRange < event.y && event.y < downY!! + draggableYRange)
-        parent?.requestDisallowInterceptTouchEvent(disallow)
         return true
     }
 
-    private fun findSelectedDot(x: Int, y: Int): Dot? {
+    private fun findSelectedDot(x: Int, y: Int) {
+        selectedDot = null
         val r = Region()
         val range = (measuredWidth - bgPaddingX * 2) / (dataSet.size * 2)
 
@@ -323,11 +349,10 @@ class CumulativeLineChartView @JvmOverloads constructor(
             r.set((dot.x - range).toInt(), 0, (dot.x + range).toInt(), bgHeight)
 
             if (r.contains(x, y)) {
-                return dot
+                selectedDot = dot
+                return
             }
         }
-
-        return null
     }
 
     private fun measurePopupTextWidth(text: String): Float {

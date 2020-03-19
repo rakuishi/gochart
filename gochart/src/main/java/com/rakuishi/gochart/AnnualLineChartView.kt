@@ -420,8 +420,15 @@ class AnnualLineChartView @JvmOverloads constructor(
         }
         val popupTextLineHeight = popupTextSize * 1.1f
         val popupHeight = (popupTextLineHeight * selectedDots.size + popupPadding * 2)
-        val popupLeft = first.x - popupWidth / 2
-        val popupRight = first.x + popupWidth / 2
+        var popupRight = first.x + popupWidth / 2
+        if (popupRight > measuredWidth) {
+            popupRight = measuredWidth.toFloat()
+        }
+        var popupLeft = popupRight - popupWidth
+        if (popupLeft < 0) {
+            popupLeft = 0f
+            popupRight = popupWidth
+        }
 
         val rectF = RectF(popupLeft, 0f, popupRight, popupHeight)
         canvas.drawRoundRect(rectF, popupRadius, popupRadius, popupBgPaint)
@@ -497,23 +504,42 @@ class AnnualLineChartView @JvmOverloads constructor(
         return maxValue
     }
 
-    private var downY: Float? = null
-    private val draggableYRange = dp2px(context, 24f)
+    private var disallowIntercept: Boolean? = null
+    private var downTimeMillis: Long? = null
+    private val holdMillis = 200L
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN)
-            downY = event.y
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                downTimeMillis = System.currentTimeMillis()
+                disallowIntercept = null
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (disallowIntercept == null) {
+                    disallowIntercept =
+                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > holdMillis
+                }
 
-        if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
-            // TODO: Don't call `postInvalidate()` frequently
-            findSelectedDots(event.x.toInt(), event.y.toInt())
-            postInvalidate()
+                if (disallowIntercept == true) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+
+                    // TODO: Don't call `postInvalidate()` frequently
+                    findSelectedDots(event.x.toInt(), event.y.toInt())
+                    postInvalidate()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                downTimeMillis = null
+                disallowIntercept = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+
+                selectedDots.clear()
+                findSelectedYears(event.x.toInt(), event.y.toInt())
+                postInvalidate()
+            }
         }
 
-        val disallow = event.action == MotionEvent.ACTION_MOVE
-                && (downY != null && downY!! - draggableYRange < event.y && event.y < downY!! + draggableYRange)
-        parent?.requestDisallowInterceptTouchEvent(disallow)
         return true
     }
 
@@ -532,7 +558,9 @@ class AnnualLineChartView @JvmOverloads constructor(
                 selectedDots.add(dot)
             }
         }
+    }
 
+    private fun findSelectedYears(x: Int, y: Int) {
         for (year in years) {
             if (year.region.contains(x, y)) {
                 year.isActive = !year.isActive

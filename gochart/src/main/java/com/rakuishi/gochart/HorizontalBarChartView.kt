@@ -64,7 +64,6 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val drawingBars = mutableListOf<Bar>()
     private var selectedBar: Bar? = null
     private val touchableRange: Int = dp2px(context, 6f)
-    private val holdMillis = 200L
 
     var bgMinimumWidth: Int = 0
     var valueFormat: String = "%.1f"
@@ -281,10 +280,17 @@ class HorizontalBarChartView @JvmOverloads constructor(
             }
             val popupHeight = popupTextSize + popupPadding * 2
             val centerX = it.rectF.left + (it.rectF.right - it.rectF.left) / 2
-            val popupLeft = centerX - popupWidth / 2
-            val popupRight = centerX + popupWidth / 2
             val popupBottom = it.rectF.top - popupTriangleHeight
             val popupTop = popupBottom - popupHeight
+            var popupRight = centerX + popupWidth / 2
+            if (popupRight > measuredWidth) {
+                popupRight = measuredWidth.toFloat()
+            }
+            var popupLeft = popupRight - popupWidth
+            if (popupLeft < 0) {
+                popupLeft = 0f
+                popupRight = popupWidth
+            }
 
             val rectF = RectF(popupLeft, popupTop, popupRight, popupBottom)
             canvas.drawRoundRect(rectF, popupRadius, popupRadius, popupBgPaint)
@@ -348,6 +354,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
     private var disallowIntercept: Boolean? = null
     private var downTimeMillis: Long? = null
+    private val holdMillis = 200L
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -366,7 +373,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
                     horizontalScrollView?.requestDisallowInterceptTouchEvent(true)
 
                     // TODO: Don't call `postInvalidate()` frequently
-                    selectedBar = findSelectedBar(event.x.toInt(), event.y.toInt())
+                    findSelectedBar(event.x.toInt(), event.y.toInt())
                     postInvalidate()
                 }
             }
@@ -374,13 +381,17 @@ class HorizontalBarChartView @JvmOverloads constructor(
                 downTimeMillis = null
                 disallowIntercept = null
                 horizontalScrollView?.requestDisallowInterceptTouchEvent(false)
+
+                selectedBar = null
+                postInvalidate()
             }
         }
 
         return true
     }
 
-    private fun findSelectedBar(x: Int, y: Int): Bar? {
+    private fun findSelectedBar(x: Int, y: Int) {
+        selectedBar = null
         val r = Region()
         for (bar in drawingBars) {
             r.set(
@@ -390,11 +401,10 @@ class HorizontalBarChartView @JvmOverloads constructor(
                 bgHeight
             )
             if (r.contains(x, y)) {
-                return bar
+                selectedBar = bar
+                return
             }
         }
-
-        return null
     }
 
     private fun measurePopupTextWidth(text: String): Float {
