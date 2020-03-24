@@ -7,8 +7,10 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.rakuishi.gochart.Util.Companion.dp2px
+import java.util.*
+import kotlin.concurrent.schedule
+import kotlin.math.abs
 import kotlin.math.max
-
 
 class CumulativeLineChartView @JvmOverloads constructor(
     context: Context,
@@ -41,7 +43,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
 
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
-    private val textColor: Int = Color.parseColor("#3B3B3B")
+    private var textColor: Int = Color.parseColor("#3B3B3B")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
     private val popupBgColor: Int = Color.parseColor("#000000")
     private val popupTextColor: Int = Color.parseColor("#FFFFFF")
@@ -53,7 +55,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val lineTextOutlinePaint: Paint = Paint()
     private val lineCircleOuterPaint: Paint = Paint()
     private val lineCircleInnerPaint: Paint = Paint()
-    private val bottomMonthTextPaint: Paint = Paint()
+    private val bottomYearTextPaint: Paint = Paint()
     private val popupBgPaint: Paint = Paint()
     private val popupTextPaint: Paint = Paint()
     private val popupUnitTextPaint: Paint = Paint()
@@ -80,6 +82,12 @@ class CumulativeLineChartView @JvmOverloads constructor(
             requestLayout()
         }
     var unitText: String = ""
+    var isDarkMode: Boolean = false
+        set(value) {
+            field = value
+            textColor = if (value) Color.parseColor("#FFFFFF") else Color.parseColor("#3B3B3B")
+            bottomYearTextPaint.color = textColor
+        }
 
     init {
         bgPaint.run {
@@ -122,7 +130,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
             color = circleInnerColor
         }
 
-        bottomMonthTextPaint.run {
+        bottomYearTextPaint.run {
             isAntiAlias = true
             color = textColor
             textSize = dp2px(getContext(), 11f).toFloat()
@@ -167,6 +175,11 @@ class CumulativeLineChartView @JvmOverloads constructor(
         }
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        timerTask?.cancel()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         drawBackground(canvas)
@@ -188,8 +201,8 @@ class CumulativeLineChartView @JvmOverloads constructor(
             val (centerX, centerY) = calcDotXY(data, index, maxValue)
             val bottomY = (bgHeight + bottomMonthTextYMargin).toFloat()
 
-            // draw BottomMonthText
-            canvas.drawText(data.year.toString(), centerX, bottomY, bottomMonthTextPaint)
+            // draw BottomYearText
+            canvas.drawText(data.year.toString(), centerX, bottomY, bottomYearTextPaint)
 
             // draw Circle
             val valueText = valueFormat.format(data.value)
@@ -300,34 +313,59 @@ class CumulativeLineChartView @JvmOverloads constructor(
         return maxValue
     }
 
-    private var disallowIntercept: Boolean? = null
-    private var downTimeMillis: Long? = null
+    private var timerTask: TimerTask? = null
+    private var disallowIntercept: Boolean = false
+    private var actionDownEvent: ActionDownEvent? = null
     private val holdMillis = 200L
+    private val holdRange = dp2px(context, 8f)
+
+    class ActionDownEvent(event: MotionEvent) {
+        val x = event.x
+        val y = event.y
+        private val millis = System.currentTimeMillis()
+
+        fun isDisturbed(holdMillis: Long, holdRange: Int, event: MotionEvent): Boolean {
+            val isInHoldMillis = System.currentTimeMillis() - millis < holdMillis
+            val isOutOfRange = abs(event.x - x) + abs(event.y - y) > holdRange
+            return isInHoldMillis && isOutOfRange
+        }
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                downTimeMillis = System.currentTimeMillis()
-                disallowIntercept = null
+                actionDownEvent = ActionDownEvent(event)
+                disallowIntercept = false
+                timerTask = Timer().schedule(holdMillis) {
+                    actionDownEvent?.let {
+                        disallowIntercept = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+
+                        findSelectedDot(it.x.toInt(), it.y.toInt())
+                        postInvalidate()
+                    }
+                }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (disallowIntercept == null) {
-                    disallowIntercept =
-                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > holdMillis
+                val isDisturbed =
+                    actionDownEvent?.isDisturbed(holdMillis, holdRange, event) != false
+                if (!disallowIntercept && isDisturbed) {
+                    timerTask?.cancel()
+                    disallowIntercept = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
                 }
 
-                if (disallowIntercept == true) {
-                    parent?.requestDisallowInterceptTouchEvent(true)
-
+                if (disallowIntercept) {
                     // TODO: Don't call `postInvalidate()` frequently
                     findSelectedDot(event.x.toInt(), event.y.toInt())
                     postInvalidate()
                 }
             }
-            MotionEvent.ACTION_UP -> {
-                downTimeMillis = null
-                disallowIntercept = null
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                actionDownEvent = null
+                timerTask?.cancel()
+                disallowIntercept = false
                 parent?.requestDisallowInterceptTouchEvent(false)
 
                 selectedDot = null

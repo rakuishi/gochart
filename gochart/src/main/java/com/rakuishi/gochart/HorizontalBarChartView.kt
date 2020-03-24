@@ -8,6 +8,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.HorizontalScrollView
 import com.rakuishi.gochart.Util.Companion.dp2px
+import java.util.*
+import kotlin.concurrent.schedule
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 
@@ -43,9 +46,9 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
-    private val borderColor: Int = Color.parseColor("#DBDBDB")
+    private val borderColor: Int = Color.parseColor("#D2D2D2")
     private val emptyBgColor: Int = Color.parseColor("#D2D2D2")
-    private val textColor: Int = Color.parseColor("#3B3B3B")
+    private var textColor: Int = Color.parseColor("#3B3B3B")
     private val popupBgColor: Int = Color.parseColor("#000000")
     private val popupTextColor: Int = Color.parseColor("#FFFFFF")
     private val bgPaint: Paint = Paint()
@@ -91,8 +94,14 @@ class HorizontalBarChartView @JvmOverloads constructor(
         }
     var isEmptyPastData: Boolean = false
     var emptyPastDataText: String = "No chart data available."
-    var horizontalScrollView: HorizontalScrollView? = null
     var unitText: String = ""
+    var isDarkMode: Boolean = false
+        set(value) {
+            field = value
+            textColor = if (value) Color.parseColor("#FFFFFF") else Color.parseColor("#3B3B3B")
+            bottomMonthTextPaint.color = textColor
+            bottomYearTextPaint.color = textColor
+        }
 
     init {
         bgPaint.run {
@@ -167,6 +176,11 @@ class HorizontalBarChartView @JvmOverloads constructor(
             isAntiAlias = true
             color = popupBgColor
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        timerTask?.cancel()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -349,38 +363,69 @@ class HorizontalBarChartView @JvmOverloads constructor(
     }
 
     fun scrollToRight() {
-        horizontalScrollView?.post { horizontalScrollView?.fullScroll(HorizontalScrollView.FOCUS_RIGHT) }
+        if (parent is HorizontalScrollView) {
+            (parent as HorizontalScrollView).post {
+                (parent as HorizontalScrollView).fullScroll(
+                    HorizontalScrollView.FOCUS_RIGHT
+                )
+            }
+        }
     }
 
-    private var disallowIntercept: Boolean? = null
-    private var downTimeMillis: Long? = null
+    private var timerTask: TimerTask? = null
+    private var disallowIntercept: Boolean = false
+    private var actionDownEvent: ActionDownEvent? = null
     private val holdMillis = 200L
+    private val holdRange = dp2px(context, 8f)
+
+    class ActionDownEvent(event: MotionEvent) {
+        val x = event.x
+        val y = event.y
+        private val millis = System.currentTimeMillis()
+
+        fun isDisturbed(holdMillis: Long, holdRange: Int, event: MotionEvent): Boolean {
+            val isInHoldMillis = System.currentTimeMillis() - millis < holdMillis
+            val isOutOfRange = abs(event.x - x) + abs(event.y - y) > holdRange
+            return isInHoldMillis && isOutOfRange
+        }
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                downTimeMillis = System.currentTimeMillis()
-                disallowIntercept = null
+                actionDownEvent = ActionDownEvent(event)
+                disallowIntercept = false
+                timerTask = Timer().schedule(holdMillis) {
+                    actionDownEvent?.let {
+                        disallowIntercept = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+
+                        findSelectedBar(it.x.toInt(), it.y.toInt())
+                        postInvalidate()
+                    }
+                }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (disallowIntercept == null) {
-                    disallowIntercept =
-                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > holdMillis
+                val isDisturbed =
+                    actionDownEvent?.isDisturbed(holdMillis, holdRange, event) != false
+                if (!disallowIntercept && isDisturbed) {
+                    timerTask?.cancel()
+                    disallowIntercept = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
                 }
 
-                if (disallowIntercept == true) {
-                    horizontalScrollView?.requestDisallowInterceptTouchEvent(true)
-
+                if (disallowIntercept) {
                     // TODO: Don't call `postInvalidate()` frequently
                     findSelectedBar(event.x.toInt(), event.y.toInt())
                     postInvalidate()
                 }
             }
-            MotionEvent.ACTION_UP -> {
-                downTimeMillis = null
-                disallowIntercept = null
-                horizontalScrollView?.requestDisallowInterceptTouchEvent(false)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                actionDownEvent = null
+                timerTask?.cancel()
+                disallowIntercept = false
+                parent?.requestDisallowInterceptTouchEvent(false)
 
                 selectedBar = null
                 postInvalidate()

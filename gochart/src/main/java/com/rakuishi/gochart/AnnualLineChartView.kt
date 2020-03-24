@@ -7,6 +7,9 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.rakuishi.gochart.Util.Companion.dp2px
+import java.util.*
+import kotlin.concurrent.schedule
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -52,7 +55,7 @@ class AnnualLineChartView @JvmOverloads constructor(
 
     private val rect: Rect = Rect()
     private val bgColor: Int = Color.parseColor("#ECECEC")
-    private val textColor: Int = Color.parseColor("#3B3B3B")
+    private var textColor: Int = Color.parseColor("#3B3B3B")
     private val inactiveCircleColor = Color.parseColor("#BCBCBC")
     private val inactiveTextColor: Int = Color.parseColor("#D2D2D2")
     private val circleInnerColor: Int = Color.parseColor("#FFFFFF")
@@ -129,6 +132,13 @@ class AnnualLineChartView @JvmOverloads constructor(
             requestLayout()
         }
     var unitText: String = ""
+    var isDarkMode: Boolean = false
+        set(value) {
+            field = value
+            textColor = if (value) Color.parseColor("#FFFFFF") else Color.parseColor("#3B3B3B")
+            bottomMonthTextPaint.color = textColor
+            bottomYearTextPaint.color = textColor
+        }
 
     init {
         bgPaint.run {
@@ -237,6 +247,11 @@ class AnnualLineChartView @JvmOverloads constructor(
         }
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        timerTask?.cancel()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         drawBackground(canvas)
@@ -340,10 +355,10 @@ class AnnualLineChartView @JvmOverloads constructor(
         )
 
         year.region = Region(
-            (circleX - bottomYearCircleSize * 1.25).toInt(),
-            (circleY - bottomYearCircleSize * 1.25).toInt(),
+            (circleX - bottomYearCircleSize * 2).toInt(),
+            (circleY - bottomYearCircleSize * 2).toInt(),
             (circleX + bottomYearTextWidthWithPadding).toInt(),
-            (circleY + bottomYearCircleSize * 1.25).toInt()
+            (circleY + bottomYearCircleSize * 2).toInt()
         )
     }
 
@@ -504,34 +519,59 @@ class AnnualLineChartView @JvmOverloads constructor(
         return maxValue
     }
 
-    private var disallowIntercept: Boolean? = null
-    private var downTimeMillis: Long? = null
+    private var timerTask: TimerTask? = null
+    private var disallowIntercept: Boolean = false
+    private var actionDownEvent: ActionDownEvent? = null
     private val holdMillis = 200L
+    private val holdRange = dp2px(context, 8f)
+
+    class ActionDownEvent(event: MotionEvent) {
+        val x = event.x
+        val y = event.y
+        private val millis = System.currentTimeMillis()
+
+        fun isDisturbed(holdMillis: Long, holdRange: Int, event: MotionEvent): Boolean {
+            val isInHoldMillis = System.currentTimeMillis() - millis < holdMillis
+            val isOutOfRange = abs(event.x - x) + abs(event.y - y) > holdRange
+            return isInHoldMillis && isOutOfRange
+        }
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                downTimeMillis = System.currentTimeMillis()
-                disallowIntercept = null
+                actionDownEvent = ActionDownEvent(event)
+                disallowIntercept = false
+                timerTask = Timer().schedule(holdMillis) {
+                    actionDownEvent?.let {
+                        disallowIntercept = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+
+                        findSelectedDots(it.x.toInt(), it.y.toInt())
+                        postInvalidate()
+                    }
+                }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (disallowIntercept == null) {
-                    disallowIntercept =
-                        downTimeMillis != null && System.currentTimeMillis() - downTimeMillis!! > holdMillis
+                val isDisturbed =
+                    actionDownEvent?.isDisturbed(holdMillis, holdRange, event) != false
+                if (!disallowIntercept && isDisturbed) {
+                    timerTask?.cancel()
+                    disallowIntercept = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
                 }
 
-                if (disallowIntercept == true) {
-                    parent?.requestDisallowInterceptTouchEvent(true)
-
+                if (disallowIntercept) {
                     // TODO: Don't call `postInvalidate()` frequently
                     findSelectedDots(event.x.toInt(), event.y.toInt())
                     postInvalidate()
                 }
             }
-            MotionEvent.ACTION_UP -> {
-                downTimeMillis = null
-                disallowIntercept = null
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                actionDownEvent = null
+                timerTask?.cancel()
+                disallowIntercept = false
                 parent?.requestDisallowInterceptTouchEvent(false)
 
                 selectedDots.clear()

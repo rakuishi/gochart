@@ -36,7 +36,6 @@ class MainActivity : AppCompatActivity() {
         horizontalBarChartView.bgMinimumWidth = getDeviceSize(this).x - dp2px(this, 32f)
         horizontalBarChartView.barColor = Color.parseColor("#2898EE")
         horizontalBarChartView.unitText = "m"
-        horizontalBarChartView.horizontalScrollView = horizontalScrollView
         horizontalBarChartView.invalidate()
         horizontalBarChartView.scrollToRight()
     }
