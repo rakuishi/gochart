@@ -9,10 +9,7 @@ import android.view.View
 import com.rakuishi.gochart.Util.Companion.dp2px
 import java.util.*
 import kotlin.concurrent.schedule
-import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.max
+import kotlin.math.*
 
 class AnnualLineChartView @JvmOverloads constructor(
     context: Context,
@@ -37,6 +34,7 @@ class AnnualLineChartView @JvmOverloads constructor(
     private val lineCircleInnerSize: Float = dp2px(context, 1.5f).toFloat()
     private val lineTextMarginY: Int = dp2px(context, 15f)
     private val bottomMonthTextYMargin: Int = dp2px(context, 17f)
+    private val bottomYearMaxSize: Int = 5
     private val bottomYearXMargin: Int = dp2px(context, 13f)
     private val bottomYearYMargin: Int = dp2px(context, 33f) // between with bg
     private val bottomYearTextYMargin: Int = dp2px(context, 4f)
@@ -338,9 +336,10 @@ class AnnualLineChartView @JvmOverloads constructor(
         val maxSize = getMaxBottomYearSize()
         val position = index % maxSize
         val lines = floor(index.toFloat() / maxSize).toInt()
+        val bottomYearWidth = measureWidth(measuredWidth) / maxSize
 
         val circleX =
-            (bottomYearXMargin * (position + 1)) + (bottomYearCircleSize * 2 + bottomYearTextWidthWithPadding) * position
+            (bottomYearWidth * position + bottomYearXMargin).toFloat()
         val circleY = bgHeight + bottomYearYMargin + lines * bottomYearTextHeight
 
         bottomYearCirclePaint.color = if (year.isActive) year.color else inactiveCircleColor
@@ -355,9 +354,9 @@ class AnnualLineChartView @JvmOverloads constructor(
         )
 
         year.region = Region(
-            (circleX - bottomYearCircleSize * 2).toInt(),
+            (bottomYearWidth * position),
             (circleY - bottomYearCircleSize * 2).toInt(),
-            (circleX + bottomYearTextWidthWithPadding).toInt(),
+            (bottomYearWidth * (position + 1)),
             (circleY + bottomYearCircleSize * 2).toInt()
         )
     }
@@ -365,7 +364,8 @@ class AnnualLineChartView @JvmOverloads constructor(
     private fun getMaxBottomYearSize(): Int {
         val textWidth =
             bottomYearXMargin + bottomYearCircleSize * 2 + bottomYearTextWidthWithPadding
-        return floor(measureWidth(measuredWidth) / textWidth).toInt()
+        val size = floor(measureWidth(measuredWidth) / textWidth).toInt()
+        return min(size, bottomYearMaxSize)
     }
 
     private fun drawCircle(canvas: Canvas, values: Array<Float?>, year: Year, maxValue: Float) {
