@@ -306,21 +306,12 @@ class AnnualLineChartView @JvmOverloads constructor(
         drawingDots.clear()
 
         drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), year.value, 0f))
-        var dot: Dot? = null
         for (index in 0..11) {
             val value = values[index] ?: continue
             val ratio = value / maxValue
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
-            dot = Dot(x, y, year.value, value)
-            // Remove same value to draw a smooth line
-            if (index >= 1 && values[index] == values[index - 1]) continue
-            drawingDots.add(dot)
-        }
-
-        // Add the last one certainly. If the last value is same as previous one, a path will be broken.
-        if (dot != null && !drawingDots.contains(dot)) {
-            drawingDots.add(dot)
+            drawingDots.add(Dot(x, y, year.value, value))
         }
 
         entireDrawingDots.addAll(drawingDots)
