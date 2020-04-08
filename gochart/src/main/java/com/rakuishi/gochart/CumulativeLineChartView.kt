@@ -26,7 +26,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     private val bottomTextHeight: Int = dp2px(context, 17f)
     private val bgRadius: Float = dp2px(context, 8f).toFloat()
     private val lineTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
-    private val lineBottomMargin: Int = dp2px(context, 2f)
+    private val lineBottomMargin: Int = dp2px(context, 5f)
     private val lineCircleOuterSize: Float = dp2px(context, 10f).toFloat()
     private val lineCircleInnerSize: Float = dp2px(context, 5f).toFloat()
     private val lineTextMarginY: Int = dp2px(context, 15f)
@@ -228,7 +228,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
     }
 
     private fun calcDotXY(data: ChartData, index: Int, maxValue: Float): Pair<Float, Float> {
-        val ratio = data.value / maxValue
+        val ratio = if (maxValue == 0f) 0f else data.value / maxValue
         val betweenX: Int = (measuredWidth - bgPaddingX * 2) / dataSet.size
         val x = bgPaddingX + ((index + 1) * betweenX).toFloat()
         val y =
@@ -310,7 +310,9 @@ class CumulativeLineChartView @JvmOverloads constructor(
         for (data in dataSet) {
             maxValue = max(maxValue, data.value)
         }
-        return maxValue
+
+        // Remove value less than 1
+        return if (maxValue < 1f) 0f else maxValue
     }
 
     private var timerTask: TimerTask? = null

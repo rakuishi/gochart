@@ -185,8 +185,8 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         drawBackground(canvas)
-        drawEmptyBackgroundIfNeeded(canvas)
         drawBar(canvas)
+        drawEmptyBackgroundIfNeeded(canvas)
         drawSelectedBarIfNeeded(canvas)
     }
 
@@ -266,7 +266,11 @@ class HorizontalBarChartView @JvmOverloads constructor(
             if (data.value == null) continue
 
             // draw Bar
-            val top = (barTopMargin + (1 - data.value / maxValue) * (bgHeight - barTopMargin))
+            val top = if (maxValue == 0f) {
+                bgHeight.toFloat()
+            } else {
+                (barTopMargin + (1 - data.value / maxValue) * (bgHeight - barTopMargin))
+            }
             val right = left + barWidth
             rect.set(left, top.toInt(), right, bgHeight)
 
@@ -359,7 +363,9 @@ class HorizontalBarChartView @JvmOverloads constructor(
             if (data.value == null) continue
             maxValue = max(maxValue, data.value)
         }
-        return maxValue
+
+        // Remove value less than 1
+        return if (maxValue < 1f) 0f else maxValue
     }
 
     fun scrollToRight() {

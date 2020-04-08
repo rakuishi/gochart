@@ -102,16 +102,16 @@ class AnnualLineChartView @JvmOverloads constructor(
         set(value) {
             var defaultActiveCount = 5
             val defaultColors = arrayListOf(
-                Color.parseColor("#569CE9"), // blue
-                Color.parseColor("#72DA82"), // green
-                Color.parseColor("#8256ED"), // purple
-                Color.parseColor("#D553B6"), // pink
-                Color.parseColor("#EB9F5D"),  // orange
-                Color.parseColor("#569CE9"), // blue
-                Color.parseColor("#72DA82"), // green
-                Color.parseColor("#8256ED"), // purple
-                Color.parseColor("#D553B6"), // pink
-                Color.parseColor("#EB9F5D")  // orange
+                Color.parseColor("#3EA5F5"),
+                Color.parseColor("#46E580"),
+                Color.parseColor("#9751FC"),
+                Color.parseColor("#EF46C5"),
+                Color.parseColor("#FCA551"),
+                Color.parseColor("#FC516F"),
+                Color.parseColor("#3EC0CD"),
+                Color.parseColor("#43C954"),
+                Color.parseColor("#F4C83A"),
+                Color.parseColor("#CC53D0")
             )
 
             // order by descending, 2020 -> 2010
@@ -308,7 +308,7 @@ class AnnualLineChartView @JvmOverloads constructor(
         drawingDots.add(Dot(0f, (bgHeight - lineBottomMargin).toFloat(), year.value, 0f))
         for (index in 0..11) {
             val value = values[index] ?: continue
-            val ratio = value / maxValue
+            val ratio = if (maxValue == 0f) 0f else value / maxValue
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
             drawingDots.add(Dot(x, y, year.value, value))
@@ -368,7 +368,7 @@ class AnnualLineChartView @JvmOverloads constructor(
                 (index == 0 && value == 0f) || (index >= 1 && values[index - 1] == value)
             if (isSameValue) continue
 
-            val ratio = value / maxValue
+            val ratio = if (maxValue == 0f) 0f else value / maxValue
             val x = ((index + 1) * lineBetweenX).toFloat()
             val y = lineTopMargin + (1 - ratio) * (bgHeight - lineTopMargin - lineBottomMargin)
             canvas.drawCircle(x, y, lineCircleOuterSize, bgPaint)
@@ -386,7 +386,7 @@ class AnnualLineChartView @JvmOverloads constructor(
         isLastYear: Boolean
     ) {
         val lastMonth = getLastMonthPair(values) ?: return
-        val lastMontRatio = lastMonth.second / maxValue
+        val lastMontRatio = if (maxValue == 0f) 0f else lastMonth.second / maxValue
         val lastMonthX = ((lastMonth.first + 1) * lineBetweenX).toFloat()
         val lastMonthY =
             lineTopMargin + (1 - lastMontRatio) * (bgHeight - lineTopMargin - lineBottomMargin)
@@ -507,7 +507,9 @@ class AnnualLineChartView @JvmOverloads constructor(
         for (data in dataSet) {
             maxValue = max(maxValue, data.value)
         }
-        return maxValue
+
+        // Remove value less than 1
+        return if (maxValue < 1f) 0f else maxValue
     }
 
     private var timerTask: TimerTask? = null
