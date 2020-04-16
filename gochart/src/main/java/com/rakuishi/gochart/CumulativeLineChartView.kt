@@ -311,8 +311,7 @@ class CumulativeLineChartView @JvmOverloads constructor(
             maxValue = max(maxValue, data.value)
         }
 
-        // Remove value less than 1
-        return if (maxValue < 1f) 0f else maxValue
+        return maxValue
     }
 
     private var timerTask: TimerTask? = null

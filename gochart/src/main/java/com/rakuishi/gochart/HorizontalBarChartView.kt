@@ -20,7 +20,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     defStyle: Int = 0
 ) : View(context, attrs, defStyle) {
 
-    class ChartData(val year: Int, val month: Int, val value: Float?)
+    class ChartData(val year: Int, val month: Int, val value: Float)
     class Bar(val rectF: RectF, val value: Float)
 
     private val bgHeight: Int = dp2px(context, 280f)
@@ -33,6 +33,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val barWidth: Int = dp2px(context, 14f)
     private val barSideMargin: Int = dp2px(context, 12f)
     private val barTopMargin: Int = dp2px(context, 40f) // bgTopPadding 25 + barTextHeight 15
+    private val barTextHeight: Int = dp2px(getContext(), 11f)
     private val barTextYMargin: Int = dp2px(context, 6f)
     private val bottomMonthTextYMargin: Int = dp2px(context, 15f)
     private val bottomYearTextYMargin: Int = dp2px(context, 30f)
@@ -67,6 +68,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
     private val drawingBars = mutableListOf<Bar>()
     private var selectedBar: Bar? = null
     private val touchableRange: Int = dp2px(context, 6f)
+    private val emptyPastDataSize: Int = 12
 
     var bgMinimumWidth: Int = 0
     var valueFormat: String = "%.1f"
@@ -78,17 +80,6 @@ class HorizontalBarChartView @JvmOverloads constructor(
         }
     var dataSet: ArrayList<ChartData> = arrayListOf()
         set(value) {
-            if (isEmptyPastData && value.isNotEmpty()) {
-                val first = value.first()
-                for (i in 1..12) {
-                    val chartData = if (first.month - i <= 0) {
-                        ChartData(first.year - 1, first.month - i + 12, null)
-                    } else {
-                        ChartData(first.year, first.month - i, null)
-                    }
-                    value.add(0, chartData)
-                }
-            }
             field = value
             requestLayout()
         }
@@ -136,7 +127,7 @@ class HorizontalBarChartView @JvmOverloads constructor(
         barTextPaint.run {
             isAntiAlias = true
             color = barColor
-            textSize = dp2px(getContext(), 11f).toFloat()
+            textSize = barTextHeight.toFloat()
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
@@ -232,10 +223,15 @@ class HorizontalBarChartView @JvmOverloads constructor(
         drawingBars.clear()
         val maxValue = calcMaxBarChartDataValue()
         var currentYear: Int? = null
+        // Skip drawing if text overlaps
+        val barTextRegion = Region()
 
-        for ((index, data) in dataSet.withIndex()) {
-            val left = ((index + 1) * barSideMargin) + (index * barWidth)
-            val centerX = (left + barWidth / 2).toFloat()
+        // draw old bar from latest bar
+        for ((reversedIndex, data) in dataSet.reversed().withIndex()) {
+            val index = (dataSet.size - 1) - reversedIndex
+            val size = if (isEmptyPastData) emptyPastDataSize else 0
+            val barLeft = ((size + index + 1) * barSideMargin) + ((size + index) * barWidth)
+            val centerX = (barLeft + barWidth / 2).toFloat()
 
             // draw BottomMonthText
             canvas.drawText(
@@ -246,7 +242,13 @@ class HorizontalBarChartView @JvmOverloads constructor(
             )
 
             // draw BottomYearText
-            if (currentYear == null || currentYear != data.year) {
+            if (currentYear == null) {
+                currentYear = data.year
+            }
+
+            val isYearEnd = (index == 0)
+                    || (index != 0 && currentYear != dataSet[index - 1].year)
+            if (isYearEnd) {
                 canvas.drawText(
                     data.year.toString(),
                     centerX,
@@ -254,35 +256,45 @@ class HorizontalBarChartView @JvmOverloads constructor(
                     bottomYearTextPaint
                 )
 
-                // draw divider
-                if (currentYear != null) {
-                    val dividerX = left - barWidth / 2f + borderWidth
+                if (index != 0) {
+                    // draw divider
+                    val dividerX = barLeft - barWidth / 2f + borderWidth
                     canvas.drawLine(dividerX, 0f, dividerX, bgHeight.toFloat(), borderPaint)
-                }
 
-                currentYear = data.year
+                    currentYear = dataSet[index - 1].year
+                }
             }
 
-            if (data.value == null) continue
-
             // draw Bar
-            val top = if (maxValue == 0f) {
+            val barTop = if (maxValue == 0f) {
                 bgHeight.toFloat()
             } else {
                 (barTopMargin + (1 - data.value / maxValue) * (bgHeight - barTopMargin))
             }
-            val right = left + barWidth
-            rect.set(left, top.toInt(), right, bgHeight)
+            rect.set(barLeft, barTop.toInt(), barLeft + barWidth, bgHeight)
 
             val rectF = RectF(rect)
             drawingBars.add(Bar(rectF, data.value))
             canvas.drawRoundRect(rectF, barRadius, barRadius, barPaint)
 
             // draw BarText
+            val barText = valueFormat.format(data.value)
+            val barTextHalfWidth = barTextPaint.measureText(barText) / 2
+            val barTextLeft = (centerX - barTextHalfWidth).toInt()
+            val barTextTop = (barTop - barTextYMargin - barTextHeight).toInt()
+            val barTextRight = (centerX + barTextHalfWidth).toInt()
+            val barTextBottom = (barTop - barTextYMargin).toInt()
+
+            if (isOverlap(barTextRegion, barTextLeft, barTextTop, barTextRight, barTextBottom)) {
+                continue
+            }
+
+            barTextRegion.set(barTextLeft, barTextTop, barTextRight, barTextBottom)
+
             canvas.drawText(
                 valueFormat.format(data.value),
                 centerX,
-                (top - barTextYMargin),
+                (barTop - barTextYMargin),
                 barTextPaint
             )
         }
@@ -346,8 +358,9 @@ class HorizontalBarChartView @JvmOverloads constructor(
     }
 
     private fun measureWidth(): Int {
-        val totalBarWidth = barWidth * dataSet.size
-        val totalBarSideMargin = barSideMargin * (dataSet.size + 1)
+        val size = if (isEmptyPastData) dataSet.size + emptyPastDataSize else dataSet.size
+        val totalBarWidth = barWidth * size
+        val totalBarSideMargin = barSideMargin * (size + 1)
         return max(bgMinimumWidth, totalBarWidth + totalBarSideMargin)
     }
 
@@ -360,12 +373,10 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
         var maxValue = 0f
         for (data in dataSet) {
-            if (data.value == null) continue
             maxValue = max(maxValue, data.value)
         }
 
-        // Remove value less than 1
-        return if (maxValue < 1f) 0f else maxValue
+        return maxValue
     }
 
     fun scrollToRight() {
@@ -464,5 +475,10 @@ class HorizontalBarChartView @JvmOverloads constructor(
 
     private fun measurePopupUnitTextWidth(text: String): Float {
         return popupUnitTextPaint.measureText(text)
+    }
+
+    private fun isOverlap(region: Region, left: Int, top: Int, right: Int, bottom: Int): Boolean {
+        return region.contains(left, top) || region.contains(left, bottom)
+                || region.contains(right, top) || region.contains(right, bottom)
     }
 }
